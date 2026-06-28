@@ -1,0 +1,58 @@
+---
+description: scip-cli dev workflow (Go)
+alwaysApply: true
+---
+
+# scip-cli agent
+
+**Work from repo root.** CLI reference: `scip-cli skill` (source: `internal/commands/SKILL.md`).
+
+**Dev binary:** `make build` → `bin/scip-cli-go` only. **Never** install or symlink as `scip-cli` on PATH — PyPI / editable Python keeps that name.
+
+```bash
+make build
+./bin/scip-cli-go --version
+make test
+```
+
+Optional: `export PATH="$(pwd)/bin:$PATH"` in this repo only, then invoke `scip-cli-go` (not `scip-cli`).
+
+Node.js + `npx` required for e2e/integration tests (`scip-typescript`). Optional: `SCIP_CLI_DEBUG=1`.
+
+## Lint / test
+
+| Task | Command |
+|------|---------|
+| Full suite | `make test` |
+| Unit only | `make test-unit` |
+| E2e | `make test-e2e` |
+| Lint / format | `make lint` / `make fmt` |
+
+E2e indexes `testdata/fixtures/sample-project/` once per run via `internal/e2e`.
+
+## Dogfood
+
+```bash
+scip-cli reindex
+scip-cli analyze --limit 25
+scip-cli analyze internal/queries --limit 15
+```
+
+Prioritize cycles → dead exports → same-file only → stale types.
+
+## Code map
+
+| Area | Path |
+|------|------|
+| Commands | `internal/commands/` |
+| Analyze | `internal/analyze/` |
+| Index build | `internal/indexing/` |
+| SQL helpers | `internal/sqlhelp/` |
+| E2e | `internal/e2e/` |
+| Fixtures | `testdata/fixtures/sample-project/` |
+
+**Import rule:** always `"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"` — never flip package/dir names.
+
+**SQL ESCAPE:** backtick SQL → `ESCAPE '\'`; double-quoted Go strings → `ESCAPE '\\'`.
+
+Docs: `README.md` (users), `internal/commands/SKILL.md` (agents). After flag changes, update SKILL + README.

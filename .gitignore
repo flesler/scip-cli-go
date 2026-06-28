@@ -1,0 +1,34 @@
+# Build
+bin/
+
+# Go
+*.test
+*.out
+coverage.out
+
+# Secrets
+.env
+.env.*
+
+# Local scratch
+tmp/
+TODO.md
+problems.md
+dogfood.md
+
+# Python leftovers (repo is Go-only)
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

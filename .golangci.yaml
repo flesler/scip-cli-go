@@ -1,0 +1,30 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosimple
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/sourcegraph/scip-cli-go
+
+issues:
+  exclude-use-default: false
+  exclude-rules:
+    # Common defer/teardown patterns where errors are safe to ignore
+    - linters:
+        - errcheck
+      text: "Error return value of `[^`]*\\.(Exec|Rollback|Scan|Close|Flush|Write|WriteString|Flock|Remove|RemoveAll|Sscanf|Walk|Copy|Setenv|Unsetenv|MkdirAll|Print|Printf|Println)`"
+    # Tests often use unchecked writes/creates — t.Fatal on each adds noise
+    - path: _test\\.go
+      linters:
+        - errcheck

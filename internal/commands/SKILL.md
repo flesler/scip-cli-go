@@ -7,7 +7,7 @@ TypeScript/JavaScript (.ts, .tsx, .js, .jsx) and Python (.py) — not GraphQL, C
 
 All commands are sub-commands of `scip-cli`. Run from the project root.
 
-**Contributors:** `make build` → `./bin/scip-cli-go` from repo root. Do **not** replace `scip-cli` on PATH.
+**Contributors:** `make setup` (pre-commit + lint tools), `make build` → `./bin/scip-cli-go`. Do **not** replace `scip-cli` on PATH.
 
 ## Quick Decision Guide
 

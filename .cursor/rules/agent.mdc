@@ -27,8 +27,13 @@ Node.js + `npx` required for e2e/integration tests (`scip-typescript`). Optional
 | Unit only | `make test-unit` |
 | E2e | `make test-e2e` |
 | Lint / format | `make lint` / `make fmt` |
+| Pre-commit | `make setup` then hooks run on commit |
 
 E2e indexes `testdata/fixtures/sample-project/` once per run via `internal/e2e`.
+
+## Pre-commit
+
+`make setup` installs `bin/golangci-lint`, `bin/goimports`, a repo-local `.venv` with pre-commit, and git hooks. Hooks: gofmt, goimports, `go build`+`vet`, golangci-lint, `go mod tidy` check.
 
 ## Dogfood
 

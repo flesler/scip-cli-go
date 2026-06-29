@@ -6,3 +6,6 @@
 
 scip_cli/SKILL.md|internal/commands/SKILL.md|skill-go
 tests/fixtures|testdata/fixtures|
+.github/ISSUE_TEMPLATE|.github/ISSUE_TEMPLATE|
+CODE_OF_CONDUCT.md|CODE_OF_CONDUCT.md|
+LICENSE|LICENSE|

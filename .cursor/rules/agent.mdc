@@ -17,7 +17,7 @@ make test
 
 Optional: `export PATH="$(pwd)/bin:$PATH"` in this repo only, then invoke `scip-cli-go` (not `scip-cli`).
 
-Node.js + `npx` required for e2e/integration tests (`scip-typescript`). Optional: `SCIP_CLI_DEBUG=1`.
+Node.js + `npx` required for e2e/integration tests (`scip-typescript`). Go toolchain required to index Go projects (`scip-go` via `go install`). Optional: `SCIP_CLI_DEBUG=1`.
 
 ## Lint / test
 
@@ -40,11 +40,16 @@ Cross tests (`internal/cross`) index the same fixture once via Python `scip-cli 
 
 ## Dogfood
 
+Use `./bin/scip-cli-go` (never install as `scip-cli` on PATH):
+
 ```bash
-scip-cli reindex
-scip-cli analyze --limit 25
-scip-cli analyze internal/queries --limit 15
+make build
+./bin/scip-cli-go reindex
+./bin/scip-cli-go analyze --limit 25
+./bin/scip-cli-go analyze internal/queries --limit 20   # drill into hubs
 ```
+
+Project-wide analyze skips test paths by default; `--include-tests` to include.
 
 Prioritize cycles → dead exports → same-file only → stale types.
 

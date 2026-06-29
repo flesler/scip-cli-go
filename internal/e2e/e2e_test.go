@@ -436,8 +436,17 @@ func TestReindexFullClearsScope(t *testing.T) {
 }
 
 func TestReindexPathRejectedForPython(t *testing.T) {
+	testReindexPathRejectedForNonTS(t, "pyproject.toml", "[project]\nname = 'x'\n")
+}
+
+func TestReindexPathRejectedForGo(t *testing.T) {
+	testReindexPathRejectedForNonTS(t, "go.mod", "module example.com/foo\n\ngo 1.25\n")
+}
+
+func testReindexPathRejectedForNonTS(t *testing.T, markerFile, content string) {
+	t.Helper()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "pyproject.toml"), []byte("[project]\nname = 'x'\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, markerFile), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 	res := runCLIInDir(root, "reindex", "--path", "src")

@@ -19,7 +19,7 @@ func ReindexMain(args map[string]interface{}) error {
 	}
 
 	pathArgs := args["path"].([]string)
-	if len(pathArgs) > 0 && lang == project.LanguagePython {
+	if len(pathArgs) > 0 && lang != project.LanguageTypeScript {
 		fmt.Fprintln(os.Stderr, "Error: reindex --path is only supported for TypeScript projects")
 		return clierr.Exit(1)
 	}

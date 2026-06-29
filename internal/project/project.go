@@ -10,6 +10,7 @@ type Language string
 const (
 	LanguageTypeScript Language = "typescript"
 	LanguagePython     Language = "python"
+	LanguageGolang     Language = "golang"
 )
 
 func FindProjectRootAndLanguage(startDir string) (string, Language, bool) {
@@ -33,6 +34,9 @@ func FindProjectRootAndLanguage(startDir string) (string, Language, bool) {
 		}
 		if _, err := os.Stat(filepath.Join(d, "setup.py")); err == nil {
 			return d, LanguagePython, true
+		}
+		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
+			return d, LanguageGolang, true
 		}
 
 		parent := filepath.Dir(d)

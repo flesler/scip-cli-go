@@ -162,7 +162,7 @@ func indexOneTSProject(root, proj, workDir string, env []string) indexResult {
 		args = []string{"index", "--infer-tsconfig", "--output", partScip, proj}
 	}
 
-	if err := runIndexer("scip-typescript", "@sourcegraph/scip-typescript", scip.ScipTypescriptVersion, absRoot, args, env); err != nil {
+	if err := runIndexer("scip-typescript", "@sourcegraph/scip-typescript", scip.ScipTypescriptVersion, "", absRoot, args, env); err != nil {
 		return indexResult{label: proj, errMsg: err.Error()}
 	}
 
@@ -174,7 +174,7 @@ func indexOneTSProject(root, proj, workDir string, env []string) indexResult {
 	return indexResult{label: proj, dbPath: partDB}
 }
 
-func runIndexer(binary, npxPackage, npxVersion, cwd string, args, env []string) error {
+func runIndexer(binary, npxPackage, npxVersion, goPackage, cwd string, args, env []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, args...)
@@ -188,12 +188,44 @@ func runIndexer(binary, npxPackage, npxVersion, cwd string, args, env []string) 
 		return fmt.Errorf("%s timed out after %ds", binary, IndexTimeout)
 	}
 	if strings.Contains(strings.ToLower(string(out)), "not found") {
+		if goPackage != "" {
+			return runGoInstallIndexer(goPackage, binary, cwd, args, env)
+		}
 		return runNpxIndexer(npxPackage, npxVersion, cwd, args, env)
 	}
 	if _, lookErr := exec.LookPath(binary); lookErr != nil {
+		if goPackage != "" {
+			return runGoInstallIndexer(goPackage, binary, cwd, args, env)
+		}
 		return runNpxIndexer(npxPackage, npxVersion, cwd, args, env)
 	}
 	return fmt.Errorf("%s failed: %s", binary, string(out))
+}
+
+func runGoInstallIndexer(goPackage, binary, cwd string, args, env []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
+	defer cancel()
+	install := exec.CommandContext(ctx, "go", "install", goPackage+"@latest")
+	install.Dir = cwd
+	install.Env = env
+	out, err := install.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("go install %s timed out after %ds", goPackage, IndexTimeout)
+		}
+		return fmt.Errorf("failed to install %s via go install: %s", binary, string(out))
+	}
+	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd.Dir = cwd
+	cmd.Env = env
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("%s timed out after %ds", binary, IndexTimeout)
+		}
+		return fmt.Errorf("%s failed: %s", binary, string(out))
+	}
+	return nil
 }
 
 func runNpxIndexer(pkg, version, cwd string, args, env []string) error {
@@ -567,7 +599,29 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 		defer os.RemoveAll(tmpDir)
 
 		indexScip := filepath.Join(tmpDir, "index.scip")
-		if err := runIndexer("scip-python", "@sourcegraph/scip-python", scip.ScipPythonVersion, absRoot, []string{"index", ".", "--output", indexScip}, env); err != nil {
+		if err := runIndexer("scip-python", "@sourcegraph/scip-python", scip.ScipPythonVersion, "", absRoot, []string{"index", ".", "--output", indexScip}, env); err != nil {
+			return "", 0, 0, err
+		}
+
+		out := cache.IndexDBPath(cacheDir, replace)
+		if err := convertScipToDB(indexScip, out); err != nil {
+			return "", 0, 0, err
+		}
+		if doLog {
+			logIndexComplete(out, lang, 0, 0)
+		}
+		return out, 0, 1, nil
+
+	case project.LanguageGolang:
+		tmpDir, err := os.MkdirTemp("", "scip-index-*")
+		if err != nil {
+			return "", 0, 0, err
+		}
+		defer os.RemoveAll(tmpDir)
+
+		indexScip := filepath.Join(tmpDir, "index.scip")
+		goEnv := os.Environ()
+		if err := runIndexer("scip-go", "", "", scip.ScipGoPackage, absRoot, []string{"--output", indexScip}, goEnv); err != nil {
 			return "", 0, 0, err
 		}
 

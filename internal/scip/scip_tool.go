@@ -20,6 +20,8 @@ import (
 const (
 	ScipTypescriptVersion = "0.4.0"
 	ScipPythonVersion     = "0.6.6"
+	ScipGoVersion         = "0.2.7"
+	ScipGoPackage         = "github.com/scip-code/scip-go/cmd/scip-go"
 
 	scipReleasesAPI     = "https://api.github.com/repos/scip-code/scip/releases"
 	scipPinnedMinor     = "0.8"

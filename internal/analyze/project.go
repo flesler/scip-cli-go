@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/flesler/scip-cli-go/internal/paths"
-	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/v2/internal/paths"
+	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
 type Priority string

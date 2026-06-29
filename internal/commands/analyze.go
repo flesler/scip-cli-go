@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/flesler/scip-cli-go/internal/analyze"
-	"github.com/flesler/scip-cli-go/internal/clierr"
-	"github.com/flesler/scip-cli-go/internal/session"
+	"github.com/flesler/scip-cli-go/v2/internal/analyze"
+	"github.com/flesler/scip-cli-go/v2/internal/clierr"
+	"github.com/flesler/scip-cli-go/v2/internal/session"
 )
 
 func projectIncludeTests(includeTests bool, scope string) bool {

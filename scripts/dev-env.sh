@@ -30,6 +30,4 @@ if [[ ! -f "${HOME}/.gitconfig" ]]; then
 	done
 fi
 
-if [[ ! -x "${ROOT}/bin/golangci-lint" || ! -x "${ROOT}/bin/goimports" ]]; then
-  make -C "${ROOT}" tools
-fi
+# Lint/format tools live in ./bin after `make setup`. Never auto-download here — can take minutes.

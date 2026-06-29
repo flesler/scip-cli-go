@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flesler/scip-cli-go/internal/analyze/testdb"
+	"github.com/flesler/scip-cli-go/v2/internal/analyze/testdb"
 )
 
 func medianElapsed(fn func(), runs, warmup int) time.Duration {

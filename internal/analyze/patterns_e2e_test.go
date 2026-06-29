@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/cache"
-	"github.com/flesler/scip-cli-go/internal/indexing"
-	"github.com/flesler/scip-cli-go/internal/output"
-	"github.com/flesler/scip-cli-go/internal/queries"
+	"github.com/flesler/scip-cli-go/v2/internal/cache"
+	"github.com/flesler/scip-cli-go/v2/internal/indexing"
+	"github.com/flesler/scip-cli-go/v2/internal/output"
+	"github.com/flesler/scip-cli-go/v2/internal/queries"
 
 	_ "modernc.org/sqlite"
 )

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/analyze/testdb"
+	"github.com/flesler/scip-cli-go/v2/internal/analyze/testdb"
 )
 
 func linesContainAny(lines []string, subs ...string) bool {

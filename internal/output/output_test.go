@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/output"
+	"github.com/flesler/scip-cli-go/v2/internal/output"
 )
 
 func captureStderr(fn func()) string {

@@ -8,10 +8,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/flesler/scip-cli-go/internal/paths"
-	"github.com/flesler/scip-cli-go/internal/queries"
-	"github.com/flesler/scip-cli-go/internal/sqlhelp"
-	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/v2/internal/paths"
+	"github.com/flesler/scip-cli-go/v2/internal/queries"
+	"github.com/flesler/scip-cli-go/v2/internal/sqlhelp"
+	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
 type AnalyzeKind string

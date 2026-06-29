@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/cross"
+	"github.com/flesler/scip-cli-go/v2/internal/cross"
 )
 
 var (

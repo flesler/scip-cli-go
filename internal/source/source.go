@@ -9,8 +9,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/flesler/scip-cli-go/internal/queries"
-	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/v2/internal/queries"
+	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
 type pathCacheKey struct {

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/analyze/testdb"
-	"github.com/flesler/scip-cli-go/internal/queries"
-	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/v2/internal/analyze/testdb"
+	"github.com/flesler/scip-cli-go/v2/internal/queries"
+	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 
 	_ "modernc.org/sqlite"
 )

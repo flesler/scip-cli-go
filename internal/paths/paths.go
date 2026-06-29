@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/flesler/scip-cli-go/internal/sqlhelp"
+	"github.com/flesler/scip-cli-go/v2/internal/sqlhelp"
 )
 
 func NormalizePathScope(pathArg, projectRoot string) (string, error) {

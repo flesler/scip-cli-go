@@ -33,12 +33,12 @@ Manual full check (same as CI): `make pre-commit`.
 ### Install (users)
 
 ```bash
-go install github.com/flesler/scip-cli-go/cmd/scip-cli@v2.3.1
+go install github.com/flesler/scip-cli-go/v2/cmd/scip-cli@v2.3.1
 ```
 
 The installed binary is `scip-cli` — rename or symlink to `scip-cli-go` if you want to avoid clashing with Python `scip-cli`.
 
-Or download a release binary from [GitHub Releases](https://github.com/flesler/scip-cli-go/releases).
+Or download a release binary from [GitHub Releases](https://github.com/flesler/scip-cli-go/v2/releases).
 
 ### Supported projects
 

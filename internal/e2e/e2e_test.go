@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/cache"
-	"github.com/flesler/scip-cli-go/internal/indexing"
-	"github.com/flesler/scip-cli-go/internal/scope"
+	"github.com/flesler/scip-cli-go/v2/internal/cache"
+	"github.com/flesler/scip-cli-go/v2/internal/indexing"
+	"github.com/flesler/scip-cli-go/v2/internal/scope"
 
 	_ "modernc.org/sqlite"
 )

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/flesler/scip-cli-go/internal/output"
-	"github.com/flesler/scip-cli-go/internal/paths"
-	"github.com/flesler/scip-cli-go/internal/queries"
-	"github.com/flesler/scip-cli-go/internal/session"
-	"github.com/flesler/scip-cli-go/internal/source"
-	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/v2/internal/output"
+	"github.com/flesler/scip-cli-go/v2/internal/paths"
+	"github.com/flesler/scip-cli-go/v2/internal/queries"
+	"github.com/flesler/scip-cli-go/v2/internal/session"
+	"github.com/flesler/scip-cli-go/v2/internal/source"
+	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
 func leafAppearsOnLine(leaf, line string) bool {

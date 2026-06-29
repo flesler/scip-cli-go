@@ -32,7 +32,7 @@ Node.js + `npx` required for e2e/integration tests (`scip-typescript`). Go toolc
 | Lint / format | `make lint` / `make fmt` |
 | Pre-commit | `make setup` then hooks run on commit |
 
-E2e indexes `testdata/fixtures/sample-project/` once per run via `internal/e2e`.
+E2e indexes `testdata/fixtures/typescript-project/` once per run via `internal/e2e`.
 
 Cross tests (`internal/cross`) index the same fixture once via Python `scip-cli reindex`, then diff stdout/stderr against `bin/scip-cli-go` for every query command. Uses PATH `scip-cli` when it is the Python build (never `scip-cli-go`); falls back to `../scip-cli/.venv/bin/scip-cli`.
 

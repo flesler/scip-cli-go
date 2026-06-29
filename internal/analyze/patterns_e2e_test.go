@@ -45,7 +45,7 @@ var (
 func TestMain(m *testing.M) {
 	_, file, _, _ := runtime.Caller(0)
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
-	fixtureSrc := filepath.Join(repoRoot, "testdata", "fixtures", "sample-project")
+	fixtureSrc := filepath.Join(repoRoot, "testdata", "fixtures", "typescript-project")
 	if _, err := os.Stat(fixtureSrc); err != nil {
 		os.Exit(1)
 	}

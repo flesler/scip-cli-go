@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	fixtureRoot = tmp
-	src := filepath.Join(repoRoot, "testdata", "fixtures", "sample-project")
+	src := filepath.Join(repoRoot, "testdata", "fixtures", "typescript-project")
 	if _, err := os.Stat(src); err != nil {
 		os.Stderr.WriteString("missing fixture: " + src + "\n")
 		os.Exit(1)

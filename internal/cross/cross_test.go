@@ -48,7 +48,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	src := filepath.Join(repoRoot, "testdata", "fixtures", "sample-project")
+	src := filepath.Join(repoRoot, "testdata", "fixtures", "typescript-project")
 
 	// Python-indexed fixture (query parity baseline).
 	pyFixture := filepath.Join(tmp, "py-fixture")

@@ -6,8 +6,8 @@ export ROOT
 export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 export PATH="${ROOT}/bin:${PATH}"
 
-# System /usr/bin/go is often 1.18; this project requires Go 1.25+ (see go.mod).
-for gobin in "${GOSDK:-${HOME}/.local/go-sdk/go}/bin" "/home/flesler/.local/go-sdk/go/bin"; do
+# Canonical Go SDK: ~/.local/go-sdk/go (see problems.md §47).
+for gobin in "${GOSDK:-${HOME}/.local/go-sdk/go}/bin"; do
 	if [[ -x "${gobin}/go" ]]; then
 		export PATH="${gobin}:${PATH}"
 		break

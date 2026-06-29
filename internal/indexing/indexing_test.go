@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sourcegraph/scip-cli-go/internal/config"
-	"github.com/sourcegraph/scip-cli-go/internal/scope"
+	"github.com/flesler/scip-cli-go/internal/config"
+	"github.com/flesler/scip-cli-go/internal/scope"
 
 	_ "modernc.org/sqlite"
 )

@@ -6,14 +6,14 @@ import (
 	"os"
 	"sort"
 
-	"github.com/sourcegraph/scip-cli-go/internal/clierr"
-	"github.com/sourcegraph/scip-cli-go/internal/output"
-	"github.com/sourcegraph/scip-cli-go/internal/paths"
-	"github.com/sourcegraph/scip-cli-go/internal/queries"
-	"github.com/sourcegraph/scip-cli-go/internal/session"
-	"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
-	"github.com/sourcegraph/scip-cli-go/internal/targets"
+	"github.com/flesler/scip-cli-go/internal/clierr"
+	"github.com/flesler/scip-cli-go/internal/output"
+	"github.com/flesler/scip-cli-go/internal/paths"
+	"github.com/flesler/scip-cli-go/internal/queries"
+	"github.com/flesler/scip-cli-go/internal/session"
+	"github.com/flesler/scip-cli-go/internal/sqlhelp"
+	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/targets"
 )
 
 func depsFromSymbol(db *sql.DB, symbolID int, limit int) ([]queries.SymbolResult, error) {

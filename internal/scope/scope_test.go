@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sourcegraph/scip-cli-go/internal/cache"
-	"github.com/sourcegraph/scip-cli-go/internal/scope"
+	"github.com/flesler/scip-cli-go/internal/cache"
+	"github.com/flesler/scip-cli-go/internal/scope"
 )
 
 func TestSaveAndLoadScope(t *testing.T) {

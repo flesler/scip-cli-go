@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"
+	"github.com/flesler/scip-cli-go/internal/sqlhelp"
 )
 
 type SymbolKind string

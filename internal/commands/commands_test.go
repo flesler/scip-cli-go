@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/symbols"
 
 	_ "modernc.org/sqlite"
 )

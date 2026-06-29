@@ -3,7 +3,7 @@ package analyze
 import (
 	"testing"
 
-	"github.com/sourcegraph/scip-cli-go/internal/analyze/testdb"
+	"github.com/flesler/scip-cli-go/internal/analyze/testdb"
 )
 
 func TestIsTestPath(t *testing.T) {

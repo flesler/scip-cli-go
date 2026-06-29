@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sourcegraph/scip-cli-go/internal/cache"
+	"github.com/flesler/scip-cli-go/internal/cache"
 )
 
 const ScopeFilename = "index-scope.json"

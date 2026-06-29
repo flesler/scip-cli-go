@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/sourcegraph/scip-cli-go/internal/project"
+	"github.com/flesler/scip-cli-go/internal/project"
 )
 
 const (

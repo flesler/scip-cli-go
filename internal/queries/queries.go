@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sourcegraph/scip-cli-go/internal/paths"
-	"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/paths"
+	"github.com/flesler/scip-cli-go/internal/sqlhelp"
+	"github.com/flesler/scip-cli-go/internal/symbols"
 )
 
 type SymbolResult struct {

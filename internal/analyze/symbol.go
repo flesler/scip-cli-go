@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/symbols"
 )
 
 func affected(db *sql.DB, symbolID int, limit int) ([]string, error) {

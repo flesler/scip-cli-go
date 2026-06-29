@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sourcegraph/scip-cli-go/internal/clierr"
-	"github.com/sourcegraph/scip-cli-go/internal/commands"
-	"github.com/sourcegraph/scip-cli-go/internal/paths"
-	"github.com/sourcegraph/scip-cli-go/internal/project"
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/clierr"
+	"github.com/flesler/scip-cli-go/internal/commands"
+	"github.com/flesler/scip-cli-go/internal/paths"
+	"github.com/flesler/scip-cli-go/internal/project"
+	"github.com/flesler/scip-cli-go/internal/symbols"
 )
 
 const version = "2.3.0"

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sourcegraph/scip-cli-go/internal/clierr"
+	"github.com/flesler/scip-cli-go/internal/clierr"
 )
 
 //go:embed SKILL.md

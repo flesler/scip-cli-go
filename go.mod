@@ -1,4 +1,4 @@
-module github.com/sourcegraph/scip-cli-go
+module github.com/flesler/scip-cli-go
 
 go 1.25.0
 

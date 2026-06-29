@@ -3,7 +3,7 @@ package sqlhelp_test
 import (
 	"testing"
 
-	"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"
+	"github.com/flesler/scip-cli-go/internal/sqlhelp"
 )
 
 func TestEscapeLike(t *testing.T) {

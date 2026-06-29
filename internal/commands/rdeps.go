@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sourcegraph/scip-cli-go/internal/clierr"
-	"github.com/sourcegraph/scip-cli-go/internal/output"
-	"github.com/sourcegraph/scip-cli-go/internal/paths"
-	"github.com/sourcegraph/scip-cli-go/internal/queries"
-	"github.com/sourcegraph/scip-cli-go/internal/session"
+	"github.com/flesler/scip-cli-go/internal/clierr"
+	"github.com/flesler/scip-cli-go/internal/output"
+	"github.com/flesler/scip-cli-go/internal/paths"
+	"github.com/flesler/scip-cli-go/internal/queries"
+	"github.com/flesler/scip-cli-go/internal/session"
 )
 
 func RdepsMain(args map[string]interface{}) error {

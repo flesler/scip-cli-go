@@ -15,7 +15,7 @@ linters:
 
 linters-settings:
   goimports:
-    local-prefixes: github.com/sourcegraph/scip-cli-go
+    local-prefixes: github.com/flesler/scip-cli-go
 
 issues:
   exclude-use-default: false

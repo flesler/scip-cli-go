@@ -48,11 +48,11 @@ test-cross:
 
 fmt: tools
 	gofmt -s -w .
-	goimports -local github.com/sourcegraph/scip-cli-go -w .
+	goimports -local github.com/flesler/scip-cli-go -w .
 
 fmt-check: tools
 	@test -z "$$(gofmt -s -l .)" || (echo "gofmt needed on:"; gofmt -s -l .; exit 1)
-	@test -z "$$(goimports -local github.com/sourcegraph/scip-cli-go -l .)" || (echo "goimports needed on:"; goimports -local github.com/sourcegraph/scip-cli-go -l .; exit 1)
+	@test -z "$$(goimports -local github.com/flesler/scip-cli-go -l .)" || (echo "goimports needed on:"; goimports -local github.com/flesler/scip-cli-go -l .; exit 1)
 
 typecheck:
 	$(GO) build -o /dev/null ./...

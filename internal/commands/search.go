@@ -8,14 +8,14 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sourcegraph/scip-cli-go/internal/clierr"
-	"github.com/sourcegraph/scip-cli-go/internal/output"
-	"github.com/sourcegraph/scip-cli-go/internal/paths"
-	"github.com/sourcegraph/scip-cli-go/internal/queries"
-	"github.com/sourcegraph/scip-cli-go/internal/session"
-	"github.com/sourcegraph/scip-cli-go/internal/source"
-	"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/clierr"
+	"github.com/flesler/scip-cli-go/internal/output"
+	"github.com/flesler/scip-cli-go/internal/paths"
+	"github.com/flesler/scip-cli-go/internal/queries"
+	"github.com/flesler/scip-cli-go/internal/session"
+	"github.com/flesler/scip-cli-go/internal/source"
+	"github.com/flesler/scip-cli-go/internal/sqlhelp"
+	"github.com/flesler/scip-cli-go/internal/symbols"
 )
 
 func parseSymbol(symbol string) (string, string) {

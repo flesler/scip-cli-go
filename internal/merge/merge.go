@@ -9,7 +9,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/symbols"
 )
 
 func MergeSQLiteIndexes(partPaths []string, outputPath string) error {

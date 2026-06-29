@@ -64,7 +64,7 @@ Prioritize cycles → dead exports → same-file only → stale types.
 | E2e | `internal/e2e/` |
 | Fixtures | `testdata/fixtures/sample-project/` |
 
-**Import rule:** always `"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"` — never flip package/dir names.
+**Import rule:** always `"github.com/flesler/scip-cli-go/internal/sqlhelp"` — never flip package/dir names.
 
 **SQL ESCAPE:** backtick SQL → `ESCAPE '\'`; double-quoted Go strings → `ESCAPE '\\'`.
 

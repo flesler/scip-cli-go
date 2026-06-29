@@ -13,7 +13,7 @@ if [[ -n "${STAGED_GO}" ]]; then
 	while IFS= read -r f; do
 		[[ -n "${f}" ]] || continue
 		gofmt -s -w "${f}"
-		goimports -local github.com/sourcegraph/scip-cli-go -w "${f}"
+		goimports -local github.com/flesler/scip-cli-go -w "${f}"
 		git add "${f}"
 	done <<< "${STAGED_GO}"
 

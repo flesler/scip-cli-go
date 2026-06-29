@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sourcegraph/scip-cli-go/internal/clierr"
-	"github.com/sourcegraph/scip-cli-go/internal/output"
-	"github.com/sourcegraph/scip-cli-go/internal/queries"
-	"github.com/sourcegraph/scip-cli-go/internal/session"
-	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/internal/clierr"
+	"github.com/flesler/scip-cli-go/internal/output"
+	"github.com/flesler/scip-cli-go/internal/queries"
+	"github.com/flesler/scip-cli-go/internal/session"
+	"github.com/flesler/scip-cli-go/internal/symbols"
 )
 
 func SymbolsMain(args map[string]interface{}) error {

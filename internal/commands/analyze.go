@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sourcegraph/scip-cli-go/internal/analyze"
-	"github.com/sourcegraph/scip-cli-go/internal/clierr"
-	"github.com/sourcegraph/scip-cli-go/internal/session"
+	"github.com/flesler/scip-cli-go/internal/analyze"
+	"github.com/flesler/scip-cli-go/internal/clierr"
+	"github.com/flesler/scip-cli-go/internal/session"
 )
 
 func projectIncludeTests(includeTests bool, scope string) bool {

@@ -3,7 +3,7 @@ package commands
 import (
 	"testing"
 
-	"github.com/sourcegraph/scip-cli-go/internal/analyze"
+	"github.com/flesler/scip-cli-go/internal/analyze"
 )
 
 func TestProjectIncludeTestsForTestPath(t *testing.T) {

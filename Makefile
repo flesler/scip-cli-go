@@ -14,7 +14,7 @@ else
 export PATH := $(CURDIR)/bin:$(PATH)
 endif
 
-.PHONY: build install test test-unit test-e2e test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean
+.PHONY: build install test test-unit test-e2e test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean sync-upstream check-upstream
 
 build:
 	$(GO) build -o $(BINARY) $(CMD)
@@ -65,6 +65,15 @@ lint: tools typecheck
 
 pre-commit: fmt-check lint
 	@git diff --quiet go.mod go.sum || (echo "go.mod/go.sum not tidy — run: go mod tidy" >&2; exit 1)
+
+# Mirror allowlisted paths from flesler/scip-cli (see scripts/upstream.manifest).
+sync-upstream:
+	@chmod +x scripts/sync-upstream.sh
+	@scripts/sync-upstream.sh --apply
+
+check-upstream:
+	@chmod +x scripts/sync-upstream.sh
+	@scripts/sync-upstream.sh --check
 
 clean:
 	rm -f $(BINARY)

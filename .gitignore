@@ -12,6 +12,7 @@ coverage.out
 
 # Local scratch
 tmp/
+.cache/
 TODO.md
 problems.md
 dogfood.md

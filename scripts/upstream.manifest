@@ -1,0 +1,8 @@
+# Upstream mirror manifest for flesler/scip-cli.
+# Consumed by scripts/sync-upstream.sh — allowlisted paths only.
+#
+# Format per line: <upstream-path>|<dest-path>|<overlay>
+#   overlay: optional basename under scripts/overlays/ (without .sed)
+
+scip_cli/SKILL.md|internal/commands/SKILL.md|skill-go
+tests/fixtures|testdata/fixtures|

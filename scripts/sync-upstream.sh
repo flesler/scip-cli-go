@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+# Sync allowlisted files from upstream scip-cli (Python reference).
+# Usage:
+#   scripts/sync-upstream.sh --check     # CI: fail if dest differs from upstream+overlay
+#   scripts/sync-upstream.sh --apply     # Write synced files; refresh scripts/upstream.lock
+#
+# Upstream resolution (first match):
+#   1. SCIP_CLI_UPSTREAM=/path/to/scip-cli checkout
+#   2. ../scip-cli next to this repo
+#   3. Shallow sparse clone into .cache/upstream-scip-cli (pinned by scripts/upstream.lock)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MANIFEST="${ROOT}/scripts/upstream.manifest"
+LOCK="${ROOT}/scripts/upstream.lock"
+CACHE="${ROOT}/.cache/upstream-scip-cli"
+UPSTREAM_REPO="${SCIP_CLI_UPSTREAM_REPO:-https://github.com/flesler/scip-cli.git}"
+UPSTREAM_GITHUB="${SCIP_CLI_UPSTREAM_GITHUB:-flesler/scip-cli}"
+
+mode=""
+ref_override=""
+
+usage() {
+	cat <<'EOF'
+Usage: scripts/sync-upstream.sh --check | --apply [--ref REF]
+
+  --check   Compare dest files to upstream (+ overlays). Exit 1 on drift.
+  --apply   Copy from upstream into this repo and update scripts/upstream.lock.
+
+Env:
+  SCIP_CLI_UPSTREAM       Path to a local scip-cli checkout (preferred).
+  SCIP_CLI_UPSTREAM_REPO  Git remote URL (default: flesler/scip-cli on GitHub).
+  SCIP_CLI_UPSTREAM_REF   Ref to fetch when cloning (overrides lock on --apply).
+
+Lock file scripts/upstream.lock pins the upstream commit after --apply.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--check) mode=check; shift ;;
+	--apply) mode=apply; shift ;;
+	--ref) ref_override="${2:?--ref needs a value}"; shift 2 ;;
+	-h | --help) usage; exit 0 ;;
+	*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+	esac
+done
+
+if [[ -z "${mode}" ]]; then
+	usage >&2
+	exit 2
+fi
+
+read_lock_ref() {
+	if [[ -f "${LOCK}" ]]; then
+		# shellcheck disable=SC1090
+		source "${LOCK}"
+		printf '%s' "${ref:-main}"
+	else
+		printf '%s' "main"
+	fi
+}
+
+read_lock_sha() {
+	if [[ -f "${LOCK}" ]]; then
+		# shellcheck disable=SC1090
+		source "${LOCK}"
+		printf '%s' "${sha:-}"
+	fi
+}
+
+local_upstream() {
+	local candidate
+	for candidate in "${SCIP_CLI_UPSTREAM:-}" "${ROOT}/../scip-cli"; do
+		[[ -n "${candidate}" && -f "${candidate}/scip_cli/SKILL.md" ]] || continue
+		printf '%s' "$(cd "${candidate}" && pwd)"
+		return 0
+	done
+	return 1
+}
+
+ensure_sparse_clone() {
+	local ref="$1"
+	mkdir -p "$(dirname "${CACHE}")"
+	if [[ ! -d "${CACHE}/.git" ]]; then
+		git clone --depth=1 --filter=blob:none --sparse "${UPSTREAM_REPO}" "${CACHE}"
+	fi
+	git -C "${CACHE}" remote set-url origin "${UPSTREAM_REPO}"
+	git -C "${CACHE}" fetch --depth=1 origin "${ref}"
+	git -C "${CACHE}" checkout --detach FETCH_HEAD
+	git -C "${CACHE}" sparse-checkout set scip_cli/SKILL.md tests/fixtures
+}
+
+resolve_upstream_root() {
+	local ref="$1"
+	if root="$(local_upstream)"; then
+		if [[ -n "${ref_override}" ]]; then
+			git -C "${root}" fetch --depth=1 origin "${ref_override}" 2>/dev/null || true
+			git -C "${root}" checkout --detach "${ref_override}" 2>/dev/null || git -C "${root}" checkout "${ref_override}"
+		fi
+		printf '%s' "${root}"
+		return 0
+	fi
+	ensure_sparse_clone "${ref}"
+	printf '%s' "${CACHE}"
+}
+
+upstream_sha() {
+	local root="$1"
+	git -C "${root}" rev-parse HEAD
+}
+
+apply_overlay() {
+	local overlay="$1"
+	local src="$2"
+	local dst="$3"
+	if [[ -z "${overlay}" ]]; then
+		cp -a "${src}" "${dst}"
+		return 0
+	fi
+	local sedfile="${ROOT}/scripts/overlays/${overlay}.sed"
+	if [[ ! -f "${sedfile}" ]]; then
+		echo "Missing overlay: ${sedfile}" >&2
+		exit 1
+	fi
+	sed -f "${sedfile}" "${src}" >"${dst}"
+}
+
+sync_file() {
+	local upstream_rel="$1"
+	local dest_rel="$2"
+	local overlay="$3"
+	local upstream_root="$4"
+	local tmp
+	tmp="$(mktemp)"
+	apply_overlay "${overlay}" "${upstream_root}/${upstream_rel}" "${tmp}"
+	if [[ "${mode}" == check ]]; then
+		if [[ ! -f "${ROOT}/${dest_rel}" ]]; then
+			echo "missing dest: ${dest_rel}" >&2
+			rm -f "${tmp}"
+			return 1
+		fi
+		if ! diff -q "${tmp}" "${ROOT}/${dest_rel}" >/dev/null; then
+			echo "drift: ${dest_rel} (run: make sync-upstream)" >&2
+			rm -f "${tmp}"
+			return 1
+		fi
+		rm -f "${tmp}"
+		return 0
+	fi
+	mkdir -p "$(dirname "${ROOT}/${dest_rel}")"
+	cp "${tmp}" "${ROOT}/${dest_rel}"
+	rm -f "${tmp}"
+}
+
+sync_tree() {
+	local upstream_rel="$1"
+	local dest_rel="$2"
+	local overlay="$3"
+	local upstream_root="$4"
+	if [[ -n "${overlay}" ]]; then
+		echo "overlay not supported for directories: ${upstream_rel}" >&2
+		exit 1
+	fi
+	if [[ "${mode}" == check ]]; then
+		if [[ ! -d "${ROOT}/${dest_rel}" ]]; then
+			echo "missing dest dir: ${dest_rel}" >&2
+			return 1
+		fi
+		if ! diff -qr "${upstream_root}/${upstream_rel}" "${ROOT}/${dest_rel}" >/dev/null; then
+			echo "drift: ${dest_rel}/ (run: make sync-upstream)" >&2
+			return 1
+		fi
+		return 0
+	fi
+	mkdir -p "$(dirname "${ROOT}/${dest_rel}")"
+	rsync -a --delete "${upstream_root}/${upstream_rel}/" "${ROOT}/${dest_rel}/"
+}
+
+write_lock() {
+	local sha="$1"
+	local ref="$2"
+	cat >"${LOCK}" <<EOF
+# Auto-generated by scripts/sync-upstream.sh --apply. Do not hand-edit sha.
+ref=${ref}
+sha=${sha}
+repo=${UPSTREAM_GITHUB}
+EOF
+}
+
+main() {
+	local ref="${ref_override:-$(read_lock_ref)}"
+	local upstream_root
+	upstream_root="$(resolve_upstream_root "${ref}")"
+	local sha
+	sha="$(upstream_sha "${upstream_root}")"
+	local failed=0
+
+	while IFS='|' read -r upstream_rel dest_rel overlay || [[ -n "${upstream_rel}" ]]; do
+		[[ -z "${upstream_rel}" || "${upstream_rel}" =~ ^# ]] && continue
+		upstream_rel="${upstream_rel#"${upstream_rel%%[![:space:]]*}"}"
+		dest_rel="${dest_rel#"${dest_rel%%[![:space:]]*}"}"
+		overlay="${overlay#"${overlay%%[![:space:]]*}"}"
+		if [[ ! -e "${upstream_root}/${upstream_rel}" ]]; then
+			echo "upstream missing: ${upstream_rel} (root=${upstream_root})" >&2
+			exit 1
+		fi
+		if [[ -d "${upstream_root}/${upstream_rel}" ]]; then
+			sync_tree "${upstream_rel}" "${dest_rel}" "${overlay}" "${upstream_root}" || failed=1
+		else
+			sync_file "${upstream_rel}" "${dest_rel}" "${overlay}" "${upstream_root}" || failed=1
+		fi
+	done <"${MANIFEST}"
+
+	if [[ "${mode}" == apply ]]; then
+		write_lock "${sha}" "${ref}"
+		echo "Synced from ${UPSTREAM_GITHUB}@${sha:0:12} (ref=${ref})"
+	fi
+
+	if [[ "${failed}" -ne 0 ]]; then
+		exit 1
+	fi
+
+	if [[ "${mode}" == check ]]; then
+		local locked
+		locked="$(read_lock_sha)"
+		if [[ -n "${locked}" && "${locked}" != "${sha}" ]]; then
+			echo "upstream lock stale: lock=${locked:0:12} checkout=${sha:0:12} (run: make sync-upstream)" >&2
+			exit 1
+		fi
+		echo "upstream mirror OK (${sha:0:12})"
+	fi
+}
+
+main

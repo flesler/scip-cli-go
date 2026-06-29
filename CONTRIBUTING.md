@@ -13,7 +13,7 @@ Requires Go 1.25+, Node.js for e2e tests.
 
 1. Fork and branch from `main`
 2. `make fmt lint test`
-3. Update `internal/commands/SKILL.md` if CLI flags or behavior change
+3. If upstream [scip-cli](https://github.com/flesler/scip-cli) changed CLI flags or agent docs, run `make sync-upstream` (or edit `scripts/overlays/` for Go-only SKILL lines)
 4. Open a PR with a clear description and test plan
 
 ## Code style

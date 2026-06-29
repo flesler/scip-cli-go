@@ -62,10 +62,12 @@ Prioritize cycles → dead exports → same-file only → stale types.
 | Index build | `internal/indexing/` |
 | SQL helpers | `internal/sqlhelp/` |
 | E2e | `internal/e2e/` |
-| Fixtures | `testdata/fixtures/sample-project/` |
+| Fixtures | `testdata/fixtures/` (mirrored from upstream `tests/fixtures/`) |
+
+**Upstream mirror:** `make sync-upstream` / `make check-upstream` — copies allowlisted paths from [flesler/scip-cli](https://github.com/flesler/scip-cli) per `scripts/upstream.manifest`; Go-only SKILL tweaks in `scripts/overlays/`.
 
 **Import rule:** always `"github.com/flesler/scip-cli-go/v2/internal/sqlhelp"` — never flip package/dir names.
 
 **SQL ESCAPE:** backtick SQL → `ESCAPE '\'`; double-quoted Go strings → `ESCAPE '\\'`.
 
-Docs: `README.md` (users), `internal/commands/SKILL.md` (agents). After flag changes, update SKILL + README.
+Docs: `README.md` (users), `internal/commands/SKILL.md` (agents, synced from upstream). After upstream flag changes, `make sync-upstream`.

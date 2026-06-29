@@ -1,4 +1,4 @@
-module github.com/flesler/scip-cli-go
+module github.com/flesler/scip-cli-go/v2
 
 go 1.25.0
 

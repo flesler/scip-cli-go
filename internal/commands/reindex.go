@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/flesler/scip-cli-go/internal/clierr"
-	"github.com/flesler/scip-cli-go/internal/indexing"
-	"github.com/flesler/scip-cli-go/internal/paths"
-	"github.com/flesler/scip-cli-go/internal/project"
-	"github.com/flesler/scip-cli-go/internal/scope"
+	"github.com/flesler/scip-cli-go/v2/internal/clierr"
+	"github.com/flesler/scip-cli-go/v2/internal/indexing"
+	"github.com/flesler/scip-cli-go/v2/internal/paths"
+	"github.com/flesler/scip-cli-go/v2/internal/project"
+	"github.com/flesler/scip-cli-go/v2/internal/scope"
 )
 
 func ReindexMain(args map[string]interface{}) error {

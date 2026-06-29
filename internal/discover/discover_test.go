@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/discover"
+	"github.com/flesler/scip-cli-go/v2/internal/discover"
 )
 
 func writeFile(t *testing.T, path, content string) {

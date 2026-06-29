@@ -4,13 +4,13 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/flesler/scip-cli-go/internal/clierr"
-	"github.com/flesler/scip-cli-go/internal/config"
-	"github.com/flesler/scip-cli-go/internal/indexing"
-	"github.com/flesler/scip-cli-go/internal/output"
-	"github.com/flesler/scip-cli-go/internal/project"
-	"github.com/flesler/scip-cli-go/internal/queries"
-	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/v2/internal/clierr"
+	"github.com/flesler/scip-cli-go/v2/internal/config"
+	"github.com/flesler/scip-cli-go/v2/internal/indexing"
+	"github.com/flesler/scip-cli-go/v2/internal/output"
+	"github.com/flesler/scip-cli-go/v2/internal/project"
+	"github.com/flesler/scip-cli-go/v2/internal/queries"
+	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
 // TestSetup, when set, overrides Setup for integration tests.

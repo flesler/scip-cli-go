@@ -3,7 +3,7 @@ package paths_test
 import (
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/paths"
+	"github.com/flesler/scip-cli-go/v2/internal/paths"
 )
 
 func TestPathInScope_exact(t *testing.T) {

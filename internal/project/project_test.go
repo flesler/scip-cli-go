@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/internal/project"
+	"github.com/flesler/scip-cli-go/v2/internal/project"
 )
 
 func TestDetectLanguage_packageJSON(t *testing.T) {

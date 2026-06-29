@@ -6,12 +6,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/flesler/scip-cli-go/internal/clierr"
-	"github.com/flesler/scip-cli-go/internal/output"
-	"github.com/flesler/scip-cli-go/internal/queries"
-	"github.com/flesler/scip-cli-go/internal/session"
-	"github.com/flesler/scip-cli-go/internal/source"
-	"github.com/flesler/scip-cli-go/internal/symbols"
+	"github.com/flesler/scip-cli-go/v2/internal/clierr"
+	"github.com/flesler/scip-cli-go/v2/internal/output"
+	"github.com/flesler/scip-cli-go/v2/internal/queries"
+	"github.com/flesler/scip-cli-go/v2/internal/session"
+	"github.com/flesler/scip-cli-go/v2/internal/source"
+	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
 func resolveSymbolGroups(db *sql.DB, names []string, kind *symbols.SymbolKind, limit int, pathScope string) ([]struct {

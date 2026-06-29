@@ -131,13 +131,6 @@ func FormatDefBody(lines []string, startLine, endLine int, maxLines, maxChars, o
 		}, nil
 	}
 
-	if maxLines == 0 {
-		maxLines = DefaultMaxDefLines
-	}
-	if maxChars == 0 {
-		maxChars = DefaultMaxDefChars
-	}
-
 	if maxLines == 0 && maxChars == 0 {
 		body := strings.Join(lines, "")
 		body = strings.TrimRight(body, "\n")
@@ -150,6 +143,10 @@ func FormatDefBody(lines []string, startLine, endLine int, maxLines, maxChars, o
 			StartLine: startLine,
 			EndLine:   endLine,
 		}, nil
+	}
+
+	if maxLines < 0 {
+		maxLines = DefaultMaxDefLines
 	}
 
 	selected := make([]string, len(lines))

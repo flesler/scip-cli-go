@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/output"
 	"github.com/sourcegraph/scip-cli-go/internal/queries"
 	"github.com/sourcegraph/scip-cli-go/internal/session"
@@ -23,7 +24,8 @@ func resolveSymbolGroups(db *sql.DB, names []string, kind *symbols.SymbolKind, l
 	}
 
 	for _, queryName := range names {
-		syms, err := queries.ResolveSymbol(db, queryName, kind, &limit, pathScope)
+		limitPlusOne := limit + 1
+		syms, err := queries.ResolveSymbol(db, queryName, kind, &limitPlusOne, pathScope)
 		if err != nil {
 			return nil, err
 		}
@@ -62,7 +64,7 @@ func CodeMain(args map[string]interface{}) error {
 		total += len(g.symbols)
 	}
 	if total == 0 {
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	showHeaders := total > 1
@@ -72,8 +74,7 @@ func CodeMain(args map[string]interface{}) error {
 	lineNumbers := args["line_numbers"].(bool)
 
 	if offset < 0 {
-		fmt.Fprintf(os.Stderr, "Error: --offset must be >= 0, got %d\n", offset)
-		os.Exit(1)
+		return fmt.Errorf("--offset must be >= 0, got %d", offset)
 	}
 
 	var maxDefLines int
@@ -97,7 +98,7 @@ func CodeMain(args map[string]interface{}) error {
 		if maxDefLines == 0 {
 			maxDefChars = 0
 		} else {
-			maxDefChars = -1
+			maxDefChars = output.DefaultMaxDefChars
 		}
 	}
 
@@ -165,7 +166,7 @@ func CodeMain(args map[string]interface{}) error {
 	}
 
 	if printed == 0 {
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 	return nil
 }

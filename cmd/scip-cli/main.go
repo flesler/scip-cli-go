@@ -76,8 +76,7 @@ func pathScope(flagPath string) string {
 	}
 	scope, err := paths.NormalizePathScope(flagPath, root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		clierr.Fatal(err)
 	}
 	return scope
 }

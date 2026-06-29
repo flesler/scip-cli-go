@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 )
 
 //go:embed SKILL.md
@@ -14,7 +16,7 @@ func SkillMain(args map[string]interface{}) error {
 	content, err := skillContent.ReadFile("SKILL.md")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error: SKILL.md not found in package")
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	targetPath := args["path"].(string)

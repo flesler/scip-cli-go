@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/sourcegraph/scip-cli-go/internal/analyze"
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/session"
 )
 
@@ -52,7 +53,7 @@ func AnalyzeMain(args map[string]interface{}) error {
 	if targetName == "" {
 		if pathScope != "" {
 			fmt.Fprintf(os.Stderr, "Error: use analyze %q for directory scope (not analyze --path)\n", pathScope)
-			os.Exit(1)
+			return clierr.Exit(1)
 		}
 		secs, err = analyze.RunProjectSections(db, limit, includeTests, "", priorities, budget)
 		if err != nil {

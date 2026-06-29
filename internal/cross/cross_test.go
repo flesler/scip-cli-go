@@ -182,6 +182,7 @@ var parityCases = []compareCase{
 	{name: "code_ambiguous_handler", args: []string{"code", cross.ClassHandler, "--snippet", "--limit", "2"}, compareStdout: true},
 	{name: "code_qualified_field", args: []string{"code", cross.TypeOptions + "." + cross.FieldVerbose, "--snippet", "--limit", "1"}, compareStdout: true},
 	{name: "code_line_numbers", args: []string{"code", cross.FnGreet, "--limit", "1", "-n"}, compareStdout: true},
+	{name: "code_full", args: []string{"code", cross.ClassWidget, "--full", "--limit", "1"}, compareStdout: true},
 
 	{name: "refs_paths_only", args: []string{"refs", cross.FnGreet, "--paths-only", "--limit", "10"}, compareStdout: true},
 	{name: "refs_multi", args: []string{"refs", cross.FnGreet, cross.MethodRun, "--limit", "10"}, compareStdout: true},
@@ -301,6 +302,15 @@ func TestCrossCompare_invalid_kind_exit(t *testing.T) {
 	compareCLIs(t, pySession, compareCase{
 		name:            "search_invalid_kind",
 		args:            []string{"search", "greet", "--kind", "bogus"},
+		wantExitNonZero: true,
+	})
+}
+
+func TestCrossCompare_invalid_priority_exit(t *testing.T) {
+	requireCrossIndex(t)
+	compareCLIs(t, pySession, compareCase{
+		name:            "analyze_invalid_priority",
+		args:            []string{"analyze", "--priority", "bogus", "--limit", "5"},
 		wantExitNonZero: true,
 	})
 }

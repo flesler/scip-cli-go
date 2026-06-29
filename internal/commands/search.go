@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/output"
 	"github.com/sourcegraph/scip-cli-go/internal/paths"
 	"github.com/sourcegraph/scip-cli-go/internal/queries"
@@ -59,18 +60,18 @@ func kindToDisplay(kind symbols.SymbolKind) string {
 	return string(kind)
 }
 
-func searchRowsWithKind(db *sql.DB, query string, params []interface{}, kind symbols.SymbolKind, limit int) []queries.SymbolResult {
+func searchRowsWithKind(db *sql.DB, query string, params []interface{}, kind symbols.SymbolKind, limit int) ([]queries.SymbolResult, error) {
 	var results []queries.SymbolResult
 	rows, err := sqlhelp.DebugExecute(db, query, params...)
 	if err != nil {
-		return results
+		return nil, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var r queries.SymbolResult
 		if err := rows.Scan(&r.ID, &r.Symbol, &r.DisplayName); err != nil {
-			continue
+			return nil, err
 		}
 		if symbols.InferKind(r.Symbol) != kind {
 			continue
@@ -80,18 +81,23 @@ func searchRowsWithKind(db *sql.DB, query string, params []interface{}, kind sym
 			break
 		}
 	}
-	return results
+	return results, rows.Err()
 }
 
-func resolveFilePath(db *sql.DB, symbolStr string, docPath string) string {
+func resolveFilePath(db *sql.DB, symbolStr string, docPath string) (string, error) {
 	if docPath != "" {
-		return docPath
+		return docPath, nil
+	}
+	if resolved, err := queries.ResolveDocumentPath(db, symbolStr); err != nil {
+		return "", err
+	} else if resolved != "" {
+		return resolved, nil
 	}
 	if extracted := symbols.ExtractFilePathFromSymbol(symbolStr); extracted != "" {
-		return extracted
+		return extracted, nil
 	}
 	filePath, _ := parseSymbol(symbolStr)
-	return filePath
+	return filePath, nil
 }
 
 type searchResult struct {
@@ -134,27 +140,37 @@ func printSearchResults(results []searchResult, namesOnly, pathsOnly bool) {
 	}
 }
 
-func defLocationForSymbol(db *sql.DB, projectRoot string, sym queries.SymbolResult) (string, interface{}) {
+func defLocationForSymbol(db *sql.DB, projectRoot string, sym queries.SymbolResult) (string, interface{}, error) {
 	path, startLine, _, err := source.ResolveDefLocation(db, projectRoot, sym.Symbol, sym.ID)
-	if err == nil && path != "" {
-		if startLine != nil {
-			return path, *startLine + 1
-		}
-		return path, "?"
+	if err != nil {
+		return "", nil, err
 	}
-	return resolveFilePath(db, sym.Symbol, ""), "?"
+	if path != "" {
+		if startLine != nil {
+			return path, *startLine + 1, nil
+		}
+		return path, "?", nil
+	}
+	filePath, err := resolveFilePath(db, sym.Symbol, "")
+	if err != nil {
+		return "", nil, err
+	}
+	return filePath, "?", nil
 }
 
-func searchResultsFromSymbols(db *sql.DB, projectRoot string, syms []queries.SymbolResult, limit int) []searchResult {
+func searchResultsFromSymbols(db *sql.DB, projectRoot string, syms []queries.SymbolResult, limit int) ([]searchResult, error) {
 	syms = output.LimitAndWarn(syms, limit, "results")
 	var results []searchResult
 	for _, sym := range syms {
-		filePath, line := defLocationForSymbol(db, projectRoot, sym)
+		filePath, line, err := defLocationForSymbol(db, projectRoot, sym)
+		if err != nil {
+			return nil, err
+		}
 		kind := symbols.InferKind(sym.Symbol)
 		short := symbols.ExtractLeafName(sym.Symbol)
 		results = append(results, searchResult{filePath, line, kindToDisplay(kind), short})
 	}
-	return results
+	return results, nil
 }
 
 func qualifiedPattern(pattern string) bool {
@@ -194,14 +210,20 @@ func SearchMain(args map[string]interface{}) error {
 	}
 
 	if len(resolvedSymbols) > 0 && len(likePatterns) == 0 {
-		results := searchResultsFromSymbols(db, projectRoot, resolvedSymbols, limit)
+		results, err := searchResultsFromSymbols(db, projectRoot, resolvedSymbols, limit)
+		if err != nil {
+			return err
+		}
 		printSearchResults(results, namesOnly, pathsOnly)
 		return nil
 	}
 
 	var prefill []searchResult
 	if len(resolvedSymbols) > 0 {
-		prefill = searchResultsFromSymbols(db, projectRoot, resolvedSymbols, limit)
+		prefill, err = searchResultsFromSymbols(db, projectRoot, resolvedSymbols, limit)
+		if err != nil {
+			return err
+		}
 	}
 
 	if len(likePatterns) == 0 {
@@ -210,7 +232,7 @@ func SearchMain(args map[string]interface{}) error {
 		} else {
 			patternStr := strings.Join(patterns, " or ")
 			fmt.Fprintf(os.Stderr, "No symbols found matching '%s'\n", patternStr)
-			os.Exit(1)
+			return clierr.Exit(1)
 		}
 		return nil
 	}
@@ -249,9 +271,15 @@ func SearchMain(args map[string]interface{}) error {
 			WHERE (%s)%s%s
 		`, joinDocs, whereClause, pathClause, kindClause)
 		params := append(patternParams, pathParams...)
-		rows := searchRowsWithKind(db, query, params, *kind, limit)
+		rows, err := searchRowsWithKind(db, query, params, *kind, limit)
+		if err != nil {
+			return err
+		}
 		for _, sym := range rows {
-			filePath, line := defLocationForSymbol(db, projectRoot, sym)
+			filePath, line, err := defLocationForSymbol(db, projectRoot, sym)
+			if err != nil {
+				return err
+			}
 			if isNoisySymbol(sym.Symbol) {
 				continue
 			}
@@ -282,15 +310,21 @@ func SearchMain(args map[string]interface{}) error {
 		for rows.Next() {
 			var sym queries.SymbolResult
 			if err := rows.Scan(&sym.ID, &sym.Symbol, &sym.DisplayName); err != nil {
-				continue
+				return err
 			}
 			if isNoisySymbol(sym.Symbol) {
 				continue
 			}
-			filePath, line := defLocationForSymbol(db, projectRoot, sym)
+			filePath, line, err := defLocationForSymbol(db, projectRoot, sym)
+			if err != nil {
+				return err
+			}
 			symKind := symbols.InferKind(sym.Symbol)
 			short := symbols.ExtractLeafName(sym.Symbol)
 			results = append(results, searchResult{filePath, line, kindToDisplay(symKind), short})
+		}
+		if err := rows.Err(); err != nil {
+			return err
 		}
 	}
 
@@ -301,7 +335,7 @@ func SearchMain(args map[string]interface{}) error {
 		} else {
 			fmt.Fprintf(os.Stderr, "No symbols found matching '%s'\n", patternStr)
 		}
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	results = output.LimitAndWarn(results, limit, "results")

@@ -4,7 +4,7 @@ Port of [scip-cli](https://github.com/flesler/scip-cli) to Go.
 
 ## Development
 
-Requires Go 1.25+.
+Requires Go 1.25+ (`~/.local/go-sdk/go/bin` or similar — `/usr/bin/go` is often too old to read `go.mod`).
 
 ```bash
 make setup          # bin/golangci-lint, bin/goimports, git hooks

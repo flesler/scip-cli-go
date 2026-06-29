@@ -5,8 +5,14 @@ export GOTOOLCHAIN=auto
 
 GOLANGCI_LINT_VERSION := v1.64.8
 
-# Repo-local tools in ./bin — not global PATH.
+GO_SDK := $(HOME)/.local/go-sdk/go/bin
+
+# Repo-local tools in ./bin; prefer user Go 1.25+ over /usr/bin/go.
+ifneq ($(wildcard $(GO_SDK)/go),)
+export PATH := $(GO_SDK):$(CURDIR)/bin:$(PATH)
+else
 export PATH := $(CURDIR)/bin:$(PATH)
+endif
 
 .PHONY: build install test test-unit test-e2e test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean
 

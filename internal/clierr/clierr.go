@@ -6,10 +6,25 @@ import (
 	"strings"
 )
 
-// Fatal prints err to stderr (SQLite → "Database error:") and exits 1.
+// exitCode signals a clean CLI exit (message already on stderr when applicable).
+type exitCode int
+
+func (e exitCode) Error() string {
+	return fmt.Sprintf("exit status %d", int(e))
+}
+
+// Exit returns an error that makes Fatal exit with code without printing again.
+func Exit(code int) error {
+	return exitCode(code)
+}
+
+// Fatal prints err to stderr (SQLite → "Database error:") and exits.
 func Fatal(err error) {
 	if err == nil {
 		return
+	}
+	if code, ok := err.(exitCode); ok {
+		os.Exit(int(code))
 	}
 	msg := err.Error()
 	lower := strings.ToLower(msg)

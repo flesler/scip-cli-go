@@ -173,9 +173,15 @@ func mergeOneDatabase(dest *sql.DB, partPath string) error {
 	}
 	defer tx2.Rollback()
 
-	tx2.Exec("DROP TABLE doc_map")
-	tx2.Exec("DROP TABLE symbol_map")
-	tx2.Exec("DROP TABLE chunk_map")
+	for _, stmt := range []string{
+		"DROP TABLE doc_map",
+		"DROP TABLE symbol_map",
+		"DROP TABLE chunk_map",
+	} {
+		if _, err := tx2.Exec(stmt); err != nil {
+			return err
+		}
+	}
 
 	return tx2.Commit()
 }

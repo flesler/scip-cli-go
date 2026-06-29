@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/output"
 	"github.com/sourcegraph/scip-cli-go/internal/queries"
 	"github.com/sourcegraph/scip-cli-go/internal/session"
@@ -34,7 +35,7 @@ func SymbolsMain(args map[string]interface{}) error {
 
 	if len(syms) == 0 {
 		fmt.Fprintf(os.Stderr, "No symbols found in '%s'\n", filePath)
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	syms = output.LimitAndWarn(syms, limit, "symbols")

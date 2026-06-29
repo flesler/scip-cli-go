@@ -2,6 +2,7 @@ package queries
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -528,7 +529,10 @@ func GetDefLocation(db *sql.DB, symbolID int) (string, *int, *int, error) {
 		WHERE der.symbol_id = ?
 	`, symbolID).Scan(&path, &startLine, &endLine)
 	if err != nil {
-		return "", nil, nil, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil, nil, nil
+		}
+		return "", nil, nil, err
 	}
 	return path, &startLine, &endLine, nil
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/output"
 	"github.com/sourcegraph/scip-cli-go/internal/paths"
 	"github.com/sourcegraph/scip-cli-go/internal/queries"
@@ -136,7 +137,7 @@ func DepsMain(args map[string]interface{}) error {
 
 	if len(deps) == 0 {
 		fmt.Fprintf(os.Stderr, "No dependencies found for '%s'\n", targetLabel)
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	deps = output.LimitAndWarn(deps, limit, "dependencies")
@@ -145,14 +146,17 @@ func DepsMain(args map[string]interface{}) error {
 		seenPaths := make(map[string]bool)
 		for _, dep := range deps {
 			path, _, _, err := queries.GetDefLocation(db, dep.ID)
-			if err == nil && path != "" && !seenPaths[path] && paths.PathInScope(path, pathScope) {
+			if err != nil {
+				return err
+			}
+			if path != "" && !seenPaths[path] && paths.PathInScope(path, pathScope) {
 				seenPaths[path] = true
 			}
 		}
 
 		if len(seenPaths) == 0 {
 			fmt.Fprintf(os.Stderr, "No dependency files found for '%s'\n", targetLabel)
-			os.Exit(1)
+			return clierr.Exit(1)
 		}
 
 		var sortedPaths []string
@@ -173,7 +177,10 @@ func DepsMain(args map[string]interface{}) error {
 		}
 
 		path, line, _, err := queries.GetDefLocation(db, dep.ID)
-		if err == nil && path != "" && paths.PathInScope(path, pathScope) {
+		if err != nil {
+			return err
+		}
+		if path != "" && paths.PathInScope(path, pathScope) {
 			lineNum := "?"
 			if line != nil {
 				lineNum = fmt.Sprintf("%d", *line+1)

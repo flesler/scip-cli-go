@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/output"
 	"github.com/sourcegraph/scip-cli-go/internal/paths"
 	"github.com/sourcegraph/scip-cli-go/internal/queries"
@@ -33,7 +34,7 @@ func RdepsMain(args map[string]interface{}) error {
 
 	if len(syms) == 0 {
 		fmt.Fprintf(os.Stderr, "No symbols found in '%s'\n", filePath)
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	symbolIDs := make([]int, len(syms))
@@ -56,7 +57,7 @@ func RdepsMain(args map[string]interface{}) error {
 
 	if len(rdeps) == 0 {
 		fmt.Fprintf(os.Stderr, "No reverse dependencies found for '%s'\n", filePath)
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	rdeps = output.LimitAndWarn(rdeps, limit, "reverse dependencies")

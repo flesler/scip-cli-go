@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/output"
 	"github.com/sourcegraph/scip-cli-go/internal/queries"
 	"github.com/sourcegraph/scip-cli-go/internal/session"
@@ -68,12 +69,12 @@ func MembersMain(args map[string]interface{}) error {
 
 	if len(members) == 0 {
 		fmt.Fprintf(os.Stderr, "No members found for '%s'\n", symbolName)
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	parentPath, parentStart, parentEnd, err := queries.GetDefLocation(db, sym.ID)
 	if err != nil {
-		parentPath = ""
+		return err
 	}
 
 	needsLookup := false

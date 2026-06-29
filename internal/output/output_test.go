@@ -102,12 +102,12 @@ func TestMaybePrintSymbolHeader(t *testing.T) {
 
 func TestFormatDefBody_unlimitedWhenMaxLinesZero(t *testing.T) {
 	var lines []string
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 200; i++ {
 		lines = append(lines, "line\n")
 	}
-	res, err := output.FormatDefBody(lines, 0, 4, 0, 0, 0, false)
-	if err != nil || res.Truncated || strings.Count(res.Body, "\n") != 4 {
-		t.Fatalf("body=%q truncated=%v err=%v", res.Body, res.Truncated, err)
+	res, err := output.FormatDefBody(lines, 0, 199, 0, 0, 0, false)
+	if err != nil || res.Truncated || strings.Count(res.Body, "\n") != 199 {
+		t.Fatalf("body lines=%d truncated=%v err=%v", strings.Count(res.Body, "\n"), res.Truncated, err)
 	}
 }
 

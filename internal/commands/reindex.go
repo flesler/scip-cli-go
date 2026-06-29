@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/indexing"
 	"github.com/sourcegraph/scip-cli-go/internal/paths"
 	"github.com/sourcegraph/scip-cli-go/internal/project"
@@ -14,13 +15,13 @@ func ReindexMain(args map[string]interface{}) error {
 	root, lang, ok := project.FindProjectRootAndLanguage("")
 	if !ok {
 		fmt.Fprintln(os.Stderr, "Error: Could not find project root")
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	pathArgs := args["path"].([]string)
 	if len(pathArgs) > 0 && lang == project.LanguagePython {
 		fmt.Fprintln(os.Stderr, "Error: reindex --path is only supported for TypeScript projects")
-		os.Exit(1)
+		return clierr.Exit(1)
 	}
 
 	if len(pathArgs) > 0 {

@@ -136,7 +136,8 @@ func RefsMain(args map[string]interface{}) error {
 	}
 
 	for _, queryName := range symbolNames {
-		syms, err := queries.ResolveSymbol(db, queryName, nil, nil, pathScope)
+		limitPlusOne := limit + 1
+		syms, err := queries.ResolveSymbol(db, queryName, nil, &limitPlusOne, pathScope)
 		if err != nil {
 			return err
 		}
@@ -145,10 +146,7 @@ func RefsMain(args map[string]interface{}) error {
 			continue
 		}
 
-		if len(syms) > limit {
-			fmt.Fprintf(os.Stderr, "# Warning: more than %d symbols, showing first %d\n", limit, limit)
-			syms = syms[:limit]
-		}
+		syms = output.LimitAndWarn(syms, limit, "symbols")
 		output.WarnAmbiguousRefs(queryName, syms, db)
 
 		for _, sym := range syms {
@@ -220,7 +218,12 @@ func getExactRefs(db *sql.DB, symbolID int, projectRoot string, maxRefs int, pat
 	}
 
 	leaf := symbols.ExtractLeafName(symStr)
-	pathClause, pathParams, _ := paths.PathFilterSQL(db, pathScope, "d")
+	var results []string
+	pathClause, pathParams, err := paths.PathFilterSQL(db, pathScope, "d")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: path filter failed: %v\n", err)
+		return results
+	}
 
 	batchSize := maxRefs * 3
 	if batchSize < 20 {
@@ -228,7 +231,6 @@ func getExactRefs(db *sql.DB, symbolID int, projectRoot string, maxRefs int, pat
 	}
 	sqlOffset := 0
 	seen := make(map[string]bool)
-	var results []string
 
 	for len(results) <= maxRefs {
 		query := fmt.Sprintf(`

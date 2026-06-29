@@ -1,8 +1,11 @@
 package symbols
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"
 )
 
 type SymbolKind string
@@ -17,6 +20,20 @@ const (
 
 func FilterableKinds() []SymbolKind {
 	return []SymbolKind{KindFunction, KindMethod, KindClass, KindProperty}
+}
+
+// ParseFilterableKind validates --kind values (mirrors Python argparse choices).
+func ParseFilterableKind(s string) (*SymbolKind, error) {
+	if s == "" {
+		return nil, nil
+	}
+	k := SymbolKind(s)
+	for _, fk := range FilterableKinds() {
+		if k == fk {
+			return &k, nil
+		}
+	}
+	return nil, fmt.Errorf("invalid kind %q (choices: function, method, class, property)", s)
 }
 
 func KindSQLClause(kind SymbolKind) string {
@@ -102,9 +119,7 @@ func InferKind(symbol string) SymbolKind {
 }
 
 func EscapeLike(s string) string {
-	s = strings.ReplaceAll(s, "%", "\\%")
-	s = strings.ReplaceAll(s, "_", "\\_")
-	return s
+	return sqlhelp.EscapeLike(s)
 }
 
 func SymbolLikePatterns(leaf string) []string {

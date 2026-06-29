@@ -639,9 +639,9 @@ func topCoupling(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 	return lines, nil
 }
 
-func ParsePriorities(priorityStr string) map[Priority]bool {
+func ParsePriorities(priorityStr string) (map[Priority]bool, error) {
 	if priorityStr == "" {
-		return nil
+		return nil, nil
 	}
 	aliases := map[string]Priority{
 		"1": PriorityHigh, "h": PriorityHigh, "high": PriorityHigh,
@@ -656,12 +656,14 @@ func ParsePriorities(priorityStr string) map[Priority]bool {
 		key := strings.ToLower(p)
 		if pr, ok := aliases[key]; ok {
 			result[pr] = true
+			continue
 		}
+		return nil, fmt.Errorf("unknown analyze priority %q (use high, medium, low or 1/2/3)", p)
 	}
 	if len(result) == 0 {
-		return nil
+		return nil, nil
 	}
-	return result
+	return result, nil
 }
 
 func NewRowBudget(limit int) *RowBudget {

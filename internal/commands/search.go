@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/sourcegraph/scip-cli-go/internal/output"
@@ -110,6 +111,7 @@ func printSearchResults(results []searchResult, namesOnly, pathsOnly bool) {
 				paths = append(paths, r.filePath)
 			}
 		}
+		sort.Strings(paths)
 		for _, p := range paths {
 			fmt.Println(p)
 		}

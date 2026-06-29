@@ -1,12 +1,13 @@
 package source
 
 import (
-	"bufio"
 	"database/sql"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/sourcegraph/scip-cli-go/internal/queries"
 	"github.com/sourcegraph/scip-cli-go/internal/symbols"
@@ -51,24 +52,33 @@ func stringsHasPrefixDotDot(s string) bool {
 	return s == ".." || len(s) > 2 && (s[:2] == ".." || s[:3] == "../")
 }
 
+func readAllSourceLines(fullPath string) ([]string, error) {
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return nil, nil
+	}
+	if !utf8.Valid(data) {
+		return nil, nil
+	}
+	if len(data) == 0 {
+		return []string{}, nil
+	}
+	parts := strings.SplitAfter(string(data), "\n")
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	return parts, nil
+}
+
 func ReadSourceLines(projectRoot, relativePath string, startLine, endLine *int) ([]string, error) {
 	fullPath := resolveSourcePath(projectRoot, relativePath)
 	if fullPath == "" {
 		return nil, nil
 	}
-	f, err := os.Open(fullPath)
-	if err != nil {
-		return nil, nil
-	}
-	defer f.Close()
 
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text()+"\n")
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, nil
+	lines, err := readAllSourceLines(fullPath)
+	if err != nil || lines == nil {
+		return nil, err
 	}
 	if startLine != nil && endLine != nil {
 		start := *startLine

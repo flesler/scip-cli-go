@@ -426,7 +426,6 @@ func GetImporterPaths(db *sql.DB, symbolIDs []int, excludePath string, limit *in
 	limitClause := ""
 	if limit != nil {
 		limitClause = fmt.Sprintf(" LIMIT %d", *limit)
-		args = append(args, *limit)
 	}
 
 	query := fmt.Sprintf(`
@@ -456,38 +455,48 @@ func GetImporterPaths(db *sql.DB, symbolIDs []int, excludePath string, limit *in
 	return result, rows.Err()
 }
 
-func GetMembers(db *sql.DB, symbolID int) ([]Member, error) {
+func GetMembers(db *sql.DB, symbolID int) ([]Member, bool, error) {
 	var symbolStr string
 	err := sqlhelp.DebugExecuteOne(db, "SELECT symbol FROM global_symbols WHERE id = ?", symbolID).Scan(&symbolStr)
 	if err != nil {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	escapedParent := sqlhelp.EscapeLike(symbolStr)
+	const membersCap = 500
 	rows, err := sqlhelp.DebugExecute(db, `
 		SELECT gs.id, gs.symbol, gs.display_name, der.start_line, der.end_line
 		FROM global_symbols gs
 		LEFT JOIN defn_enclosing_ranges der ON gs.id = der.symbol_id
 		WHERE gs.symbol LIKE ? ESCAPE '\' AND gs.symbol != ?
 		ORDER BY der.start_line, gs.symbol
-		LIMIT 500
-	`, escapedParent+"%", symbolStr)
+		LIMIT ?
+	`, escapedParent+"%", symbolStr, membersCap+1)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
 	var results []Member
+	nFetched := 0
 	for rows.Next() {
+		nFetched++
 		var m Member
 		if err := rows.Scan(&m.ID, &m.Symbol, &m.DisplayName, &m.StartLine, &m.EndLine); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if !strings.Contains(m.Symbol, ").(") && isDirectMember(symbolStr, m.Symbol) {
 			results = append(results, m)
 		}
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	truncated := nFetched > membersCap
+	if len(results) > membersCap {
+		results = results[:membersCap]
+	}
+	return results, truncated, nil
 }
 
 func isDirectMember(parentSymbol, memberSymbol string) bool {

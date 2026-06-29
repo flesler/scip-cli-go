@@ -3,8 +3,8 @@ package session
 import (
 	"database/sql"
 	"fmt"
-	"os"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/config"
 	"github.com/sourcegraph/scip-cli-go/internal/indexing"
 	"github.com/sourcegraph/scip-cli-go/internal/output"
@@ -22,19 +22,16 @@ func Setup() (*sql.DB, string, error) {
 	}
 	projectRoot, ok := project.FindProjectRoot("")
 	if !ok {
-		fmt.Fprintln(os.Stderr, "Error: Could not find project root")
-		os.Exit(1)
+		clierr.FatalMsg("Error: Could not find project root")
 	}
 
 	if _, err := config.LoadProjectConfig(projectRoot); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		clierr.Fatal(err)
 	}
 
 	db, err := indexing.GetDB(projectRoot)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		clierr.Fatal(err)
 	}
 
 	return db, projectRoot, nil

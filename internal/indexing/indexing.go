@@ -1,8 +1,10 @@
 package indexing
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sourcegraph/scip-cli-go/internal/cache"
 	"github.com/sourcegraph/scip-cli-go/internal/config"
@@ -172,12 +175,17 @@ func indexOneTSProject(root, proj, workDir string, env []string) indexResult {
 }
 
 func runIndexer(binary, npxPackage, npxVersion, cwd string, args, env []string) error {
-	cmd := exec.Command(binary, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = cwd
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return nil
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("%s timed out after %ds", binary, IndexTimeout)
 	}
 	if strings.Contains(strings.ToLower(string(out)), "not found") {
 		return runNpxIndexer(npxPackage, npxVersion, cwd, args, env)
@@ -191,11 +199,16 @@ func runIndexer(binary, npxPackage, npxVersion, cwd string, args, env []string) 
 func runNpxIndexer(pkg, version, cwd string, args, env []string) error {
 	spec := fmt.Sprintf("%s@~%s", pkg, version)
 	npxArgs := append([]string{"-y", spec}, args...)
-	cmd := exec.Command("npx", npxArgs...)
+	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "npx", npxArgs...)
 	cmd.Dir = cwd
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("npx %s timed out after %ds", pkg, IndexTimeout)
+		}
 		return fmt.Errorf("npx %s failed: %s", pkg, string(out))
 	}
 	return nil
@@ -214,10 +227,15 @@ func convertScipToDB(scipPath, dbPath string) error {
 		return err
 	}
 
-	cmd := exec.Command(scipBin, "expt-convert", scipPath, "--output", filepath.Base(dbPath))
+	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, scipBin, "expt-convert", scipPath, "--output", filepath.Base(dbPath))
 	cmd.Dir = filepath.Dir(dbPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("scip expt-convert timed out after %ds", IndexTimeout)
+		}
 		fmt.Fprintln(os.Stderr, string(out))
 		return fmt.Errorf("failed to convert index")
 	}
@@ -235,19 +253,30 @@ func postprocessIndex(dbPath string) error {
 	}
 	defer db.Close()
 
-	if err := trimUnusedColumns(db); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
 		return err
 	}
-	if err := trimMentionsToKnownSymbols(db); err != nil {
+	defer tx.Rollback()
+
+	if err := trimUnusedColumns(tx); err != nil {
 		return err
 	}
-	if err := trimDefnToKnownSymbols(db); err != nil {
+	if err := trimMentionsToKnownSymbols(tx); err != nil {
 		return err
 	}
-	return nil
+	if err := trimDefnToKnownSymbols(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-func trimUnusedColumns(db *sql.DB) error {
+type sqlExec interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
+func trimUnusedColumns(db sqlExec) error {
 	if _, err := db.Exec(`CREATE TABLE documents_new (
 		id INTEGER PRIMARY KEY,
 		relative_path TEXT NOT NULL UNIQUE
@@ -285,7 +314,7 @@ func trimUnusedColumns(db *sql.DB) error {
 	return err
 }
 
-func trimMentionsToKnownSymbols(db *sql.DB) error {
+func trimMentionsToKnownSymbols(db sqlExec) error {
 	var exists int
 	err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='mentions' LIMIT 1`).Scan(&exists)
 	if err != nil {
@@ -313,7 +342,7 @@ func trimMentionsToKnownSymbols(db *sql.DB) error {
 	return err
 }
 
-func trimDefnToKnownSymbols(db *sql.DB) error {
+func trimDefnToKnownSymbols(db sqlExec) error {
 	var exists int
 	err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='defn_enclosing_ranges' LIMIT 1`).Scan(&exists)
 	if err != nil {
@@ -479,11 +508,22 @@ func indexTypescript(root, cacheDir string, projects []string, env []string, rep
 }
 
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0644)
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = out.Close()
+	}()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int, int, error) {
@@ -547,20 +587,16 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 
 // GetDB returns a SQLite connection to the index, triggering indexing if needed.
 func GetDB(projectRoot string) (*sql.DB, error) {
-	if projectRoot == "" {
-		projectRoot, _ = os.Getwd()
+	root, lang, ok := project.FindProjectRootAndLanguage(projectRoot)
+	if !ok {
+		return nil, fmt.Errorf("could not find project root")
+	}
+	if lang == "" {
+		return nil, fmt.Errorf("no supported project markers found in %s", root)
 	}
 
-	dbPath := cache.FindDB(projectRoot)
+	dbPath := cache.FindDB(root)
 	if dbPath == "" {
-		root, lang, ok := project.FindProjectRootAndLanguage(projectRoot)
-		if !ok {
-			return nil, fmt.Errorf("could not find project root")
-		}
-		if lang == "" {
-			return nil, fmt.Errorf("no supported project markers found in %s", root)
-		}
-
 		cacheDir := cache.GetCacheDir(root)
 		lock, err := cache.IndexBuildLock(cacheDir)
 		if err != nil {
@@ -568,7 +604,7 @@ func GetDB(projectRoot string) (*sql.DB, error) {
 		}
 		defer cache.UnlockIndex(lock)
 
-		dbPath = cache.FindDB(projectRoot)
+		dbPath = cache.FindDB(root)
 		if dbPath == "" {
 			cache.CleanupInProgressIndex(cacheDir)
 			outputDB, skipped, total, idxErr := indexProject(root, string(lang), cacheDir, true, false)
@@ -586,7 +622,7 @@ func GetDB(projectRoot string) (*sql.DB, error) {
 			logIndexComplete(outputDB, string(lang), projCount, skipped)
 		}
 
-		dbPath = cache.FindDB(projectRoot)
+		dbPath = cache.FindDB(root)
 		if dbPath == "" {
 			return nil, fmt.Errorf("no index.db found after indexing")
 		}

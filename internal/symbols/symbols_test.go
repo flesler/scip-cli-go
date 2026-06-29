@@ -64,6 +64,20 @@ func TestInferKind_cases(t *testing.T) {
 	}
 }
 
+func TestParseFilterableKind(t *testing.T) {
+	_, err := symbols.ParseFilterableKind("bogus")
+	if err == nil {
+		t.Fatal("expected error for bogus kind")
+	}
+	k, err := symbols.ParseFilterableKind("class")
+	if err != nil || k == nil || *k != symbols.KindClass {
+		t.Fatalf("class: k=%v err=%v", k, err)
+	}
+	if _, err := symbols.ParseFilterableKind(""); err != nil {
+		t.Fatal("empty kind should be nil")
+	}
+}
+
 func TestKindSQLClause(t *testing.T) {
 	if !strings.Contains(symbols.KindSQLClause(symbols.KindClass), "LIKE '%#'") {
 		t.Fatal("class clause")

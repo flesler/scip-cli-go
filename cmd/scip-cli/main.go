@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sourcegraph/scip-cli-go/internal/clierr"
 	"github.com/sourcegraph/scip-cli-go/internal/commands"
 	"github.com/sourcegraph/scip-cli-go/internal/paths"
 	"github.com/sourcegraph/scip-cli-go/internal/project"
@@ -61,8 +62,7 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		clierr.Fatal(err)
 	}
 }
 
@@ -82,12 +82,8 @@ func pathScope(flagPath string) string {
 	return scope
 }
 
-func parseKind(s string) *symbols.SymbolKind {
-	if s == "" {
-		return nil
-	}
-	k := symbols.SymbolKind(s)
-	return &k
+func parseKind(s string) (*symbols.SymbolKind, error) {
+	return symbols.ParseFilterableKind(s)
 }
 
 func runRefs(argv []string) error {
@@ -130,11 +126,15 @@ func runCode(argv []string) error {
 	if len(syms) == 0 {
 		return fmt.Errorf("code requires at least one symbol name")
 	}
+	kind, err := parseKind(*kindStr)
+	if err != nil {
+		return err
+	}
 	argsMap := map[string]interface{}{
 		"symbol":       syms,
 		"limit":        *limit,
 		"path_scope":   pathScope(*pathFlag),
-		"kind":         parseKind(*kindStr),
+		"kind":         kind,
 		"full":         *full,
 		"offset":       *offset,
 		"snippet":      *snippet,
@@ -160,11 +160,15 @@ func runSearch(argv []string) error {
 	if len(patterns) == 0 {
 		return fmt.Errorf("search requires at least one pattern")
 	}
+	kind, err := parseKind(*kindStr)
+	if err != nil {
+		return err
+	}
 	return commands.SearchMain(map[string]interface{}{
 		"pattern":    patterns,
 		"limit":      *limit,
 		"path_scope": pathScope(*pathFlag),
-		"kind":       parseKind(*kindStr),
+		"kind":       kind,
 		"names_only": *namesOnly,
 		"paths_only": *pathsOnly,
 	})

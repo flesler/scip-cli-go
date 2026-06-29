@@ -3,6 +3,7 @@ package source
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -32,6 +33,22 @@ func TestReadSourceLinesRejectsTraversal(t *testing.T) {
 	lines, _ := ReadSourceLines(dir, "../outside.ts", nil, nil)
 	if lines != nil {
 		t.Fatal("expected nil for path traversal")
+	}
+}
+
+func TestReadSourceLines_longLine(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "proj")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	longLine := strings.Repeat("x", 128*1024) + "\nshort\n"
+	if err := os.WriteFile(filepath.Join(root, "big.ts"), []byte(longLine), 0644); err != nil {
+		t.Fatal(err)
+	}
+	lines, err := ReadSourceLines(root, "big.ts", nil, nil)
+	if err != nil || len(lines) != 2 {
+		t.Fatalf("got %d lines err=%v", len(lines), err)
 	}
 }
 

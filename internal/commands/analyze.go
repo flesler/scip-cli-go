@@ -41,7 +41,10 @@ func AnalyzeMain(args map[string]interface{}) error {
 	priorityStr := args["priority"].(string)
 	targetName := args["target"].(string)
 
-	priorities := analyze.ParsePriorities(priorityStr)
+	priorities, err := analyze.ParsePriorities(priorityStr)
+	if err != nil {
+		return err
+	}
 	budget := analyze.NewRowBudget(limit)
 
 	var secs []analyze.SectionResult

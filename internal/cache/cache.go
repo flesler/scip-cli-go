@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+
+	"github.com/sourcegraph/scip-cli-go/internal/project"
 )
 
 const (
@@ -116,10 +118,15 @@ func GetCacheDir(projectRoot string) string {
 }
 
 func FindDB(projectRoot string) string {
-	if projectRoot == "" {
-		projectRoot, _ = os.Getwd()
+	root := projectRoot
+	if root == "" {
+		if resolved, ok := project.FindProjectRoot(""); ok {
+			root = resolved
+		} else {
+			root, _ = os.Getwd()
+		}
 	}
-	cache := IndexDBPath(GetCacheDir(projectRoot), false)
+	cache := IndexDBPath(GetCacheDir(root), false)
 	if _, err := os.Stat(cache); err == nil {
 		return cache
 	}

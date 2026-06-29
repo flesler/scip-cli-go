@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -210,59 +209,4 @@ func EnsureScipBinary() (string, error) {
 	}
 
 	return cached, nil
-}
-
-// RunScipIndexer runs the appropriate SCIP indexer for the given language.
-func RunScipIndexer(language, projectRoot string, maxHeapMb int) error {
-	if maxHeapMb <= 0 {
-		maxHeapMb = 8192
-	}
-
-	env := os.Environ()
-	heapFlag := fmt.Sprintf("--max-old-space-size=%d", maxHeapMb)
-	nodeOpts := os.Getenv("NODE_OPTIONS")
-	if !strings.Contains(nodeOpts, heapFlag) {
-		updated := strings.TrimSpace(nodeOpts + " " + heapFlag)
-		env = append(env, "NODE_OPTIONS="+updated)
-	}
-
-	switch strings.ToLower(language) {
-	case "typescript":
-		return runWithFallback("scip-typescript", "@sourcegraph/scip-typescript", ScipTypescriptVersion, projectRoot, []string{"index", "."}, env)
-	case "python":
-		return runWithFallback("scip-python", "@sourcegraph/scip-python", ScipPythonVersion, projectRoot, []string{"index", "."}, env)
-	default:
-		return fmt.Errorf("unsupported language: %s", language)
-	}
-}
-
-func runWithFallback(binary, npxPackage, npxVersion, cwd string, args []string, env []string) error {
-	cmd := exec.Command(binary, args...)
-	cmd.Dir = cwd
-	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return nil
-	}
-	if strings.Contains(strings.ToLower(string(out)), "not found") {
-		return runNpx(npxPackage, npxVersion, cwd, args, env)
-	}
-	if _, lookErr := exec.LookPath(binary); lookErr != nil {
-		return runNpx(npxPackage, npxVersion, cwd, args, env)
-	}
-	return fmt.Errorf("%s failed: %s", binary, string(out))
-}
-
-func runNpx(pkg, version, cwd string, args []string, env []string) error {
-	spec := fmt.Sprintf("%s@~%s", pkg, version)
-	npxArgs := append([]string{"-y", spec}, args...)
-	cmd := exec.Command("npx", npxArgs...)
-	cmd.Dir = cwd
-	cmd.Env = env
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("npx %s failed: %s", pkg, string(out))
-	}
-	return nil
 }

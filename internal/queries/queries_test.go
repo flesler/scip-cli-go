@@ -97,7 +97,7 @@ func TestGetMembers_classMethods(t *testing.T) {
 	b.Method("src/widget.ts", "Widget", "run", 0, 10)
 	b.Method("src/widget.ts", "Widget", "stop", 0, 10)
 	db := b.Finish()
-	members, err := queries.GetMembers(db, widgetID)
+	members, _, err := queries.GetMembers(db, widgetID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestGetMembers_typeLiteralFields(t *testing.T) {
 	b.TypeLiteralField("src/helper.ts", "Options", "verbose", 0)
 	b.TypeLiteralField("src/helper.ts", "Options", "debug", 0)
 	db := b.Finish()
-	members, err := queries.GetMembers(db, optsID)
+	members, _, err := queries.GetMembers(db, optsID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestGetMembers_excludesParameters(t *testing.T) {
 	paramSym := "scip-typescript npm test 1.0 src/x.ts/`x.ts`/Foo#bar().(eventIds)"
 	db.Exec("INSERT INTO global_symbols (id, symbol, display_name) VALUES (?, ?, ?)", 99, paramSym, "eventIds")
 
-	members, err := queries.GetMembers(db, fooID)
+	members, _, err := queries.GetMembers(db, fooID)
 	if err != nil {
 		t.Fatal(err)
 	}

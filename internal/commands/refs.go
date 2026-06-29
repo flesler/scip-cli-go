@@ -182,10 +182,15 @@ func RefsMain(args map[string]interface{}) error {
 				}
 			}
 		}
+		var sortedPaths []string
 		for path := range uniquePaths {
 			if paths.PathInScope(path, pathScope) {
-				fmt.Println(path)
+				sortedPaths = append(sortedPaths, path)
 			}
+		}
+		sort.Strings(sortedPaths)
+		for _, path := range sortedPaths {
+			fmt.Println(path)
 		}
 		return nil
 	}
@@ -241,6 +246,7 @@ func getExactRefs(db *sql.DB, symbolID int, projectRoot string, maxRefs int, pat
 
 		rows, err := db.Query(query, params...)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: reference query failed: %v\n", err)
 			break
 		}
 
@@ -250,7 +256,11 @@ func getExactRefs(db *sql.DB, symbolID int, projectRoot string, maxRefs int, pat
 		for rows.Next() {
 			var chunkID, docID, startLine, endLine int
 			var relPath string
-			rows.Scan(&chunkID, &docID, &startLine, &endLine, &relPath)
+			if err := rows.Scan(&chunkID, &docID, &startLine, &endLine, &relPath); err != nil {
+				rows.Close()
+				fmt.Fprintf(os.Stderr, "Warning: reference row scan failed: %v\n", err)
+				return results
+			}
 
 			if _, ok := byDoc[docID]; !ok {
 				byDoc[docID] = map[string]interface{}{

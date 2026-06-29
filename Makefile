@@ -8,7 +8,7 @@ GOLANGCI_LINT_VERSION := v1.64.8
 # Repo-local tools in ./bin — not global PATH.
 export PATH := $(CURDIR)/bin:$(PATH)
 
-.PHONY: build install test test-unit test-e2e fmt fmt-check vet typecheck lint tools setup pre-commit clean
+.PHONY: build install test test-unit test-e2e test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean
 
 build:
 	$(GO) build -o $(BINARY) $(CMD)
@@ -22,20 +22,23 @@ tools:
 	GOBIN=$(CURDIR)/bin $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	GOBIN=$(CURDIR)/bin $(GO) install golang.org/x/tools/cmd/goimports@latest
 
-# One-time dev setup: local Go tools + venv pre-commit + git hooks.
+# One-time dev setup: local Go tools + git hooks (no Python required).
 setup: tools
-	@test -d .venv || python3 -m venv .venv
-	.venv/bin/pip install -q -r requirements-dev.txt
-	.venv/bin/pre-commit install
-	@echo "Ready. Hooks run via .venv/bin/pre-commit; Go tools in ./bin/"
+	@chmod +x scripts/hooks/pre-commit
+	@git config core.hooksPath scripts/hooks
+	@echo "Ready. Git hooks in scripts/hooks/; Go tools in ./bin/"
 
 test: build test-unit test-e2e
 
 test-unit:
-	$(GO) test $(shell $(GO) list ./internal/... | grep -v /e2e) -count=1
+	$(GO) test $(shell $(GO) list ./internal/... | grep -v /e2e | grep -v /cross) -count=1
 
 test-e2e:
 	$(GO) test ./internal/e2e/... -count=1 -timeout 10m
+
+# Python (PATH scip-cli) vs Go output parity on the TS fixture. Requires npx + ../scip-cli venv or PATH scip-cli.
+test-cross:
+	$(GO) test ./internal/cross/... -count=1 -timeout 15m
 
 fmt: tools
 	gofmt -s -w .
@@ -54,9 +57,8 @@ vet: typecheck
 lint: tools typecheck
 	golangci-lint run --timeout=5m
 
-pre-commit:
-	@if [ -x .venv/bin/pre-commit ]; then .venv/bin/pre-commit run --all-files; \
-	else pre-commit run --all-files; fi
+pre-commit: fmt-check lint
+	@git diff --quiet go.mod go.sum || (echo "go.mod/go.sum not tidy — run: go mod tidy" >&2; exit 1)
 
 clean:
 	rm -f $(BINARY)

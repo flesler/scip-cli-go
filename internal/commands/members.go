@@ -56,9 +56,12 @@ func MembersMain(args map[string]interface{}) error {
 		return err
 	}
 
-	members, err := queries.GetMembers(db, sym.ID)
+	members, truncated, err := queries.GetMembers(db, sym.ID)
 	if err != nil {
 		return err
+	}
+	if truncated {
+		fmt.Fprintf(os.Stderr, "Warning: member list truncated at 500 (index cap)\n")
 	}
 
 	members = output.LimitAndWarn(members, limit, "members")

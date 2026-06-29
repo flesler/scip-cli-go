@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/sourcegraph/scip-cli-go/internal/output"
 	"github.com/sourcegraph/scip-cli-go/internal/paths"
@@ -11,6 +12,7 @@ import (
 	"github.com/sourcegraph/scip-cli-go/internal/session"
 	"github.com/sourcegraph/scip-cli-go/internal/sqlhelp"
 	"github.com/sourcegraph/scip-cli-go/internal/symbols"
+	"github.com/sourcegraph/scip-cli-go/internal/targets"
 )
 
 func depsFromSymbol(db *sql.DB, symbolID int, limit int) ([]queries.SymbolResult, error) {
@@ -49,7 +51,7 @@ func depsFromSymbol(db *sql.DB, symbolID int, limit int) ([]queries.SymbolResult
 	for rows.Next() {
 		var r queries.SymbolResult
 		if err := rows.Scan(&r.ID, &r.Symbol, &r.DisplayName); err != nil {
-			continue
+			return nil, err
 		}
 		results = append(results, r)
 	}
@@ -89,7 +91,7 @@ func depsFromFile(db *sql.DB, filePath string, limit int) ([]queries.SymbolResul
 	for rows.Next() {
 		var r queries.SymbolResult
 		if err := rows.Scan(&r.ID, &r.Symbol, &r.DisplayName); err != nil {
-			continue
+			return nil, err
 		}
 		results = append(results, r)
 	}
@@ -111,9 +113,7 @@ func DepsMain(args map[string]interface{}) error {
 	var deps []queries.SymbolResult
 	targetLabel := target
 
-	if target[len(target)-3:] == ".ts" || target[len(target)-4:] == ".tsx" ||
-		target[len(target)-3:] == ".js" || target[len(target)-4:] == ".jsx" ||
-		target[len(target)-3:] == ".py" {
+	if targets.LooksLikeFileTarget(target) {
 		filePath, err := session.ResolveOneFile(db, target, pathScope)
 		if err != nil {
 			return err
@@ -155,7 +155,12 @@ func DepsMain(args map[string]interface{}) error {
 			os.Exit(1)
 		}
 
+		var sortedPaths []string
 		for path := range seenPaths {
+			sortedPaths = append(sortedPaths, path)
+		}
+		sort.Strings(sortedPaths)
+		for _, path := range sortedPaths {
 			fmt.Println(path)
 		}
 		return nil

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Git pre-commit hook (installed via: make setup → core.hooksPath=scripts/hooks).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=scripts/dev-env.sh
+source "${ROOT}/scripts/dev-env.sh"
+cd "${ROOT}"
+
+git diff --cached --check
+
+STAGED_GO="$(git diff --cached --name-only --diff-filter=ACM -- '*.go' || true)"
+if [[ -n "${STAGED_GO}" ]]; then
+	while IFS= read -r f; do
+		[[ -n "${f}" ]] || continue
+		gofmt -s -w "${f}"
+		goimports -local github.com/sourcegraph/scip-cli-go -w "${f}"
+		git add "${f}"
+	done <<< "${STAGED_GO}"
+
+	"${ROOT}/scripts/pre-commit-typecheck.sh"
+	"${ROOT}/scripts/pre-commit-lint.sh"
+fi
+
+if git diff --cached --name-only | grep -qE '^go\.(mod|sum)$'; then
+	"${ROOT}/scripts/pre-commit-mod-tidy.sh"
+fi

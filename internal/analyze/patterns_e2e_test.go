@@ -271,9 +271,18 @@ func TestStaleTypeUnionSameFileNotListed(t *testing.T) {
 }
 
 func TestParsePrioritiesAliases(t *testing.T) {
-	p := ParsePriorities("1,h,high,2,m,low,l,3")
+	p, err := ParsePriorities("1,h,high,2,m,low,l,3")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !p[PriorityHigh] || !p[PriorityMedium] || !p[PriorityLow] {
 		t.Fatalf("expected all priorities: %v", p)
+	}
+}
+
+func TestParsePrioritiesRejectsUnknown(t *testing.T) {
+	if _, err := ParsePriorities("high,foo"); err == nil {
+		t.Fatal("expected error for unknown priority")
 	}
 }
 

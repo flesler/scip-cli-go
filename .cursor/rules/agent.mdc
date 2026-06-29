@@ -24,6 +24,8 @@ Node.js + `npx` required for e2e/integration tests (`scip-typescript`). Go toolc
 | Task | Command |
 |------|---------|
 | Full suite | `make test` |
+| Publish gate | `scripts/test.sh` or `make pre-commit test-unit` |
+| Release | `make publish` or `scripts/publish.sh [patch\|minor\|major]` |
 | Unit only | `make test-unit` |
 | E2e | `make test-e2e` |
 | Python parity | `make test-cross` |

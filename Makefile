@@ -14,7 +14,7 @@ else
 export PATH := $(CURDIR)/bin:$(PATH)
 endif
 
-.PHONY: build install test test-unit test-e2e test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean sync-upstream check-upstream
+.PHONY: build install test test-unit test-e2e test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean sync-upstream check-upstream publish
 
 build:
 	$(GO) build -o $(BINARY) $(CMD)
@@ -74,6 +74,10 @@ sync-upstream:
 check-upstream:
 	@chmod +x scripts/sync-upstream.sh
 	@scripts/sync-upstream.sh --check
+
+publish:
+	@chmod +x scripts/publish.sh scripts/test.sh
+	@scripts/publish.sh $(PUBLISH_BUMP)
 
 clean:
 	rm -f $(BINARY)

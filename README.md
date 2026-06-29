@@ -28,6 +28,8 @@ All Go tools install to `./bin/` via `make tools` — nothing added to global PA
 
 Manual full check (same as CI): `make pre-commit`.
 
+Release: `scripts/publish.sh patch` (or `minor` / `major`) — test, version bump, tag, push, GitHub release, `go install` smoke test.
+
 **Do not** install this binary as `scip-cli` on PATH; the Python package keeps that name.
 
 ### Install (users)

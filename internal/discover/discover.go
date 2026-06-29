@@ -21,6 +21,8 @@ var skipDirNames = map[string]bool{
 	".turbo":       true,
 	".nx":          true,
 	"tmp":          true,
+	".venv":        true,
+	"venv":         true,
 }
 
 func readJSON(path string) (map[string]interface{}, error) {
@@ -200,4 +202,99 @@ func DiscoverProjects(root string, scope string) ([]string, error) {
 	}
 
 	return []string{"."}, nil
+}
+
+func walkMarkerFiles(root string, markerNames map[string]bool) ([]string, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	found := make(map[string]bool)
+
+	err = filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if info.IsDir() {
+			name := info.Name()
+			if skipDirNames[name] || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !markerNames[info.Name()] {
+			return nil
+		}
+		projectDir := filepath.Dir(path)
+		rel, err := filepath.Rel(root, projectDir)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return nil
+		}
+		if rel == "" || rel == "." {
+			found["."] = true
+		} else {
+			found[filepath.ToSlash(rel)] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(found) == 0 {
+		return nil, nil
+	}
+	result := make([]string, 0, len(found))
+	for p := range found {
+		result = append(result, p)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func discoverMarkerProjects(root string, markerNames map[string]bool, rootMarker string) ([]string, error) {
+	projects, err := walkMarkerFiles(root, markerNames)
+	if err != nil {
+		return nil, err
+	}
+	if len(projects) > 0 {
+		return projects, nil
+	}
+	if _, err := os.Stat(filepath.Join(root, rootMarker)); err == nil {
+		return []string{"."}, nil
+	}
+	return []string{"."}, nil
+}
+
+// DiscoverPythonProjects returns Python package roots under root.
+func DiscoverPythonProjects(root string) ([]string, error) {
+	markers := map[string]bool{"pyproject.toml": true, "setup.py": true}
+	projects, err := walkMarkerFiles(root, markers)
+	if err != nil {
+		return nil, err
+	}
+	if len(projects) > 0 {
+		return projects, nil
+	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(filepath.Join(root, "pyproject.toml")); err == nil {
+		return []string{"."}, nil
+	}
+	if _, err := os.Stat(filepath.Join(root, "setup.py")); err == nil {
+		return []string{"."}, nil
+	}
+	return []string{"."}, nil
+}
+
+// DiscoverGolangModules returns Go module directories (go.mod roots) under root.
+func DiscoverGolangModules(root string) ([]string, error) {
+	return discoverMarkerProjects(root, map[string]bool{"go.mod": true}, "go.mod")
+}
+
+// DiscoverRustCrates returns Rust crate directories (Cargo.toml roots) under root.
+func DiscoverRustCrates(root string) ([]string, error) {
+	return discoverMarkerProjects(root, map[string]bool{"Cargo.toml": true}, "Cargo.toml")
 }

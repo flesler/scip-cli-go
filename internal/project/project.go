@@ -11,6 +11,7 @@ const (
 	LanguageTypeScript Language = "typescript"
 	LanguagePython     Language = "python"
 	LanguageGolang     Language = "golang"
+	LanguageRust       Language = "rust"
 )
 
 func FindProjectRootAndLanguage(startDir string) (string, Language, bool) {
@@ -28,6 +29,9 @@ func FindProjectRootAndLanguage(startDir string) (string, Language, bool) {
 		}
 		if _, err := os.Stat(filepath.Join(d, "tsconfig.json")); err == nil {
 			return d, LanguageTypeScript, true
+		}
+		if _, err := os.Stat(filepath.Join(d, "Cargo.toml")); err == nil {
+			return d, LanguageRust, true
 		}
 		if _, err := os.Stat(filepath.Join(d, "pyproject.toml")); err == nil {
 			return d, LanguagePython, true

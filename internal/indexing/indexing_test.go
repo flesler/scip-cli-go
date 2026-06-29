@@ -3,9 +3,11 @@ package indexing
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -242,7 +244,7 @@ func TestLogIndexComplete(t *testing.T) {
 	io.Copy(&buf, r)
 	err := buf.String()
 	if !strings.Contains(err, "Indexed") || !strings.Contains(err, "1.0 KB") ||
-		!strings.Contains(err, "typescript") || !strings.Contains(err, "3 tsconfigs") ||
+		!strings.Contains(err, "typescript") || !strings.Contains(err, "3 projects") ||
 		!strings.Contains(err, "1 skipped") {
 		t.Fatalf("stderr=%q", err)
 	}
@@ -255,5 +257,63 @@ func writeJSON(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBatchProjects_chunks(t *testing.T) {
+	projects := make([]string, 23)
+	for i := range projects {
+		projects[i] = fmt.Sprintf("p%d", i)
+	}
+	batches := batchProjects(projects, 10)
+	if len(batches) != 3 || len(batches[0]) != 10 || len(batches[1]) != 10 || len(batches[2]) != 3 {
+		t.Fatalf("batches=%v", batches)
+	}
+}
+
+func TestBatchProjects_defaultAll(t *testing.T) {
+	os.Unsetenv("SCIP_CLI_TS_INDEX_BATCH_SIZE")
+	projects := make([]string, 23)
+	for i := range projects {
+		projects[i] = fmt.Sprintf("p%d", i)
+	}
+	size, err := tsIndexBatchSize()
+	if err != nil || size != 0 {
+		t.Fatalf("size=%d err=%v", size, err)
+	}
+	batches := batchProjects(projects, size)
+	if len(batches) != 1 || len(batches[0]) != 23 {
+		t.Fatalf("batches=%v", batches)
+	}
+}
+
+func TestProjectBatchLabel(t *testing.T) {
+	if projectBatchLabel([]string{"lib/a"}) != "lib/a" {
+		t.Fatal(projectBatchLabel([]string{"lib/a"}))
+	}
+	if projectBatchLabel([]string{"lib/a", "lib/b"}) != "lib/a +1 more" {
+		t.Fatal(projectBatchLabel([]string{"lib/a", "lib/b"}))
+	}
+}
+
+func TestTsIndexBatchSize_rejectsAboveMax(t *testing.T) {
+	os.Setenv("SCIP_CLI_TS_INDEX_BATCH_SIZE", strconv.Itoa(MaxTSIndexBatchSize+1))
+	defer os.Unsetenv("SCIP_CLI_TS_INDEX_BATCH_SIZE")
+	_, err := tsIndexBatchSize()
+	if err == nil || !strings.Contains(err.Error(), "exceeds max") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestTypescriptIndexArgs_inferTsconfig(t *testing.T) {
+	root := t.TempDir()
+	args := typescriptIndexArgs(root, "/tmp/out.scip", []string{"packages/api"})
+	if !strings.Contains(strings.Join(args, " "), "--infer-tsconfig") {
+		t.Fatalf("args=%v", args)
+	}
+	writeJSON(t, filepath.Join(root, "tsconfig.json"), `{"include":["src"]}`)
+	args = typescriptIndexArgs(root, "/tmp/out.scip", []string{".", "packages/api"})
+	if strings.Contains(strings.Join(args, " "), "--infer-tsconfig") {
+		t.Fatalf("args=%v", args)
 	}
 }

@@ -124,3 +124,23 @@ func TestDiscover_tsconfigVariantWithInclude(t *testing.T) {
 		t.Fatalf("projects=%v", projects)
 	}
 }
+
+func TestDiscoverGolangModules_nested(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), "module example.com/root\n\ngo 1.22\n")
+	writeFile(t, filepath.Join(root, "services", "api", "go.mod"), "module example.com/api\n\ngo 1.22\n")
+	modules, err := discover.DiscoverGolangModules(root)
+	if err != nil || len(modules) != 2 {
+		t.Fatalf("modules=%v err=%v", modules, err)
+	}
+}
+
+func TestDiscoverRustCrates_nested(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "Cargo.toml"), "[workspace]\nmembers = [\"crates/a\"]\n")
+	writeFile(t, filepath.Join(root, "crates", "a", "Cargo.toml"), "[package]\nname=\"a\"\nversion=\"0.1.0\"\n")
+	crates, err := discover.DiscoverRustCrates(root)
+	if err != nil || len(crates) != 2 || crates[1] != "crates/a" {
+		t.Fatalf("crates=%v err=%v", crates, err)
+	}
+}

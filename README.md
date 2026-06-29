@@ -36,7 +36,7 @@ Manual full check (same as CI): `make pre-commit`.
 go install github.com/flesler/scip-cli-go/v2/cmd/scip-cli@latest
 ```
 
-(`@latest` → current release, v2.3.1. Pin with `@v2.3.1` if you need an exact version.)
+(`@latest` → current release. Pin with `@v2.5.0` if you need an exact version.)
 
 The installed binary is `scip-cli` — rename or symlink to `scip-cli-go` if you want to avoid clashing with Python `scip-cli`.
 
@@ -51,8 +51,9 @@ Auto-detects language from project markers:
 | TypeScript/JS | `package.json`, `tsconfig.json` | `scip-typescript` (via `npx`) |
 | Python | `pyproject.toml`, `setup.py` | `scip-python` (via `npx`) |
 | Go | `go.mod` | `scip-go` (via `go install` → `~/go/bin`) |
+| Rust | `Cargo.toml` | `rust-analyzer` (via `rustup component add`) |
 
-On first index, missing tools are fetched automatically (`npx` for TS/Python, `go install` for Go). The `scip` converter auto-downloads from [GitHub releases](https://github.com/scip-code/scip/releases) when absent.
+On first index, missing tools are fetched automatically (`npx` for TS/Python, `go install` for Go, `rustup` for Rust). The `scip` converter auto-downloads from [GitHub releases](https://github.com/scip-code/scip/releases) when absent.
 
 Optional manual install:
 
@@ -60,9 +61,12 @@ Optional manual install:
 npm install -g @sourcegraph/scip-typescript
 npm install -g @sourcegraph/scip-python
 go install github.com/scip-code/scip-go/cmd/scip-go@latest
+rustup component add rust-analyzer
 ```
 
-`.scip-cli.json` `maxHeapMb` tunes Node heap for `scip-typescript` / `scip-python` only (not `scip-go`).
+`.scip-cli.json` `maxHeapMb` tunes Node heap for `scip-typescript` / `scip-python` only (not `scip-go` or `rust-analyzer`).
+
+`SCIP_CLI_TS_INDEX_BATCH_SIZE` splits large TS monorepos into multiple `scip-typescript` runs (default: all tsconfigs in one run). `SCIP_CLI_INDEX_WORKERS` controls parallel batch runs (default: up to 8).
 
 ### Python / `test-cross`
 

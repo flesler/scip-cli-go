@@ -32,6 +32,7 @@ const (
 	IndexTimeout           = 300
 	DefaultMaxHeapMb       = 8192
 	ProgressLogMinProjects = 10
+	MaxTSIndexBatchSize    = 2147483647
 )
 
 func defaultIndexWorkers() int {
@@ -48,12 +49,71 @@ func defaultIndexWorkers() int {
 func indexWorkers() int {
 	if v := os.Getenv("SCIP_CLI_INDEX_WORKERS"); v != "" {
 		n := 0
-		fmt.Sscanf(v, "%d", &n)
-		if n > 0 {
-			return n
+		if _, err := fmt.Sscanf(v, "%d", &n); err != nil || n < 1 {
+			return defaultIndexWorkers()
 		}
+		return n
 	}
 	return defaultIndexWorkers()
+}
+
+func tsIndexBatchSize() (int, error) {
+	v := os.Getenv("SCIP_CLI_TS_INDEX_BATCH_SIZE")
+	if v == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return 0, fmt.Errorf("invalid SCIP_CLI_TS_INDEX_BATCH_SIZE: expected an integer, got %q", v)
+	}
+	if n < 1 {
+		return 0, fmt.Errorf("invalid SCIP_CLI_TS_INDEX_BATCH_SIZE: expected a positive integer, got %d", n)
+	}
+	if n > MaxTSIndexBatchSize {
+		return 0, fmt.Errorf("SCIP_CLI_TS_INDEX_BATCH_SIZE=%d exceeds max (%d)", n, MaxTSIndexBatchSize)
+	}
+	return n, nil
+}
+
+func batchProjects(projects []string, batchSize int) [][]string {
+	if len(projects) == 0 {
+		return nil
+	}
+	if batchSize <= 0 {
+		return [][]string{projects}
+	}
+	var batches [][]string
+	for i := 0; i < len(projects); i += batchSize {
+		end := i + batchSize
+		if end > len(projects) {
+			end = len(projects)
+		}
+		batches = append(batches, projects[i:end])
+	}
+	return batches
+}
+
+func projectBatchLabel(projects []string) string {
+	if len(projects) == 1 {
+		return projectLabel(projects[0])
+	}
+	return fmt.Sprintf("%s +%d more", projectLabel(projects[0]), len(projects)-1)
+}
+
+func tsBatchLimitDisplay(batchSize, total int) string {
+	if batchSize <= 0 || batchSize >= total {
+		return "all tsconfigs per run"
+	}
+	return fmt.Sprintf("up to %d tsconfigs per run", batchSize)
+}
+
+func typescriptIndexArgs(root, outputScip string, projects []string) []string {
+	absRoot, _ := filepath.Abs(root)
+	args := []string{"index", "--output", outputScip}
+	if _, err := os.Stat(filepath.Join(absRoot, "tsconfig.json")); os.IsNotExist(err) {
+		args = []string{"index", "--infer-tsconfig", "--output", outputScip}
+	}
+	return append(args, projects...)
 }
 
 func formatDBSize(dbPath string) string {
@@ -75,7 +135,7 @@ func logIndexComplete(dbPath, lang string, projects, skipped int) {
 	size := formatDBSize(dbPath)
 	suffix := ""
 	if projects > 1 {
-		suffix = fmt.Sprintf(", %d tsconfigs", projects)
+		suffix = fmt.Sprintf(", %d projects", projects)
 		if skipped > 0 {
 			suffix += fmt.Sprintf(", %d skipped", skipped)
 		}
@@ -149,32 +209,197 @@ type indexResult struct {
 	errMsg string
 }
 
-func indexOneTSProject(root, proj, workDir string, env []string) indexResult {
+func indexTSProjects(root string, projects []string, workDir string, env []string, outputDB string) indexResult {
+	label := projectBatchLabel(projects)
 	if err := os.MkdirAll(workDir, 0755); err != nil {
-		return indexResult{label: proj, errMsg: err.Error()}
+		return indexResult{label: label, errMsg: err.Error()}
 	}
 
-	absRoot, _ := filepath.Abs(root)
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
 	partScip := filepath.Join(workDir, "index.scip")
-	args := []string{"index", "--output", partScip, proj}
-
-	if _, err := os.Stat(filepath.Join(absRoot, "tsconfig.json")); os.IsNotExist(err) {
-		args = []string{"index", "--infer-tsconfig", "--output", partScip, proj}
+	dbPath := outputDB
+	if dbPath == "" {
+		dbPath = filepath.Join(workDir, "index.db")
 	}
-
-	if err := runIndexer("scip-typescript", "@sourcegraph/scip-typescript", scip.ScipTypescriptVersion, "", absRoot, args, env); err != nil {
-		return indexResult{label: proj, errMsg: err.Error()}
+	args := typescriptIndexArgs(root, partScip, projects)
+	if err := runIndexer("scip-typescript", "@sourcegraph/scip-typescript", scip.ScipTypescriptVersion, "", "", absRoot, args, env); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
 	}
-
-	partDB := filepath.Join(workDir, "index.db")
-	if err := convertScipToDB(partScip, partDB); err != nil {
-		return indexResult{label: proj, errMsg: err.Error()}
+	if err := convertScipToDB(partScip, dbPath, ""); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
 	}
-
-	return indexResult{label: proj, dbPath: partDB}
+	return indexResult{label: label, dbPath: dbPath}
 }
 
-func runIndexer(binary, npxPackage, npxVersion, goPackage, cwd string, args, env []string) error {
+func projectCwd(root, proj string) string {
+	absRoot, _ := filepath.Abs(root)
+	if proj == "" || proj == "." {
+		return absRoot
+	}
+	return filepath.Join(absRoot, proj)
+}
+
+func projectLabel(proj string) string {
+	if proj == "" || proj == "." {
+		return "."
+	}
+	return proj
+}
+
+func indexOnePythonProject(root, proj, workDir string, env []string) indexResult {
+	label := projectLabel(proj)
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	cwd := projectCwd(root, proj)
+	partScip := filepath.Join(workDir, "index.scip")
+	partDB := filepath.Join(workDir, "index.db")
+	if err := runIndexer("scip-python", "@sourcegraph/scip-python", scip.ScipPythonVersion, "", "", cwd, []string{"index", ".", "--output", partScip}, env); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	if err := convertScipToDB(partScip, partDB, proj); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	return indexResult{label: label, dbPath: partDB}
+}
+
+func indexOneGolangModule(root, proj, workDir string, env []string) indexResult {
+	label := projectLabel(proj)
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	cwd := projectCwd(root, proj)
+	partScip := filepath.Join(workDir, "index.scip")
+	partDB := filepath.Join(workDir, "index.db")
+	goEnv := os.Environ()
+	if err := runIndexer("scip-go", "", "", scip.ScipGoPackage, "", cwd, []string{"--output", partScip}, goEnv); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	if err := convertScipToDB(partScip, partDB, proj); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	return indexResult{label: label, dbPath: partDB}
+}
+
+func indexOneRustCrate(root, proj, workDir string, env []string) indexResult {
+	label := projectLabel(proj)
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	cwd := projectCwd(root, proj)
+	partScip := filepath.Join(workDir, "index.scip")
+	partDB := filepath.Join(workDir, "index.db")
+	if err := runIndexer("rust-analyzer", "", "", "", "rust-analyzer", cwd, []string{"scip", cwd, "--output", partScip}, env); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	if err := convertScipToDB(partScip, partDB, proj); err != nil {
+		return indexResult{label: label, errMsg: err.Error()}
+	}
+	return indexResult{label: label, dbPath: partDB}
+}
+
+type indexOneFunc func(root, proj, workDir string, env []string) indexResult
+
+func indexDiscovered(root, cacheDir string, projects []string, env []string, replace bool, indexOne indexOneFunc) (string, int, int, int, error) {
+	workers := indexWorkers()
+	useParallel := len(projects) > 1 && workers > 1
+	outputDB := cache.IndexDBPath(cacheDir, replace)
+
+	tmpDir, err := os.MkdirTemp("", "scip-index-*")
+	if err != nil {
+		return "", 0, 0, 0, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	total := len(projects)
+	showProgress := total > ProgressLogMinProjects
+
+	var partDBs []string
+	skipped := 0
+
+	if useParallel {
+		type indexedResult struct {
+			res indexResult
+			idx int
+		}
+		ch := make(chan indexedResult, total)
+		var wg sync.WaitGroup
+
+		sem := make(chan struct{}, workers)
+		for i, proj := range projects {
+			wg.Add(1)
+			go func(idx int, p string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				workDir := filepath.Join(tmpDir, fmt.Sprintf("part-%d", idx+1))
+				res := indexOne(root, p, workDir, env)
+				ch <- indexedResult{res: res, idx: idx}
+			}(i, proj)
+		}
+
+		go func() {
+			wg.Wait()
+			close(ch)
+		}()
+
+		var results []indexedResult
+		completed := 0
+		for r := range ch {
+			completed++
+			results = append(results, r)
+			if r.res.dbPath == "" {
+				skipped++
+				fmt.Fprintf(os.Stderr, "Warning: skipped %s: %s\n", r.res.label, r.res.errMsg)
+			} else if showProgress {
+				fmt.Fprintf(os.Stderr, "Indexed %d/%d: %s\n", completed, total, r.res.label)
+			}
+		}
+
+		sort.Slice(results, func(i, j int) bool { return results[i].idx < results[j].idx })
+		for _, r := range results {
+			if r.res.dbPath != "" {
+				partDBs = append(partDBs, r.res.dbPath)
+			}
+		}
+	} else {
+		for i, proj := range projects {
+			label := projectLabel(proj)
+			if showProgress {
+				fmt.Fprintf(os.Stderr, "Indexing %d/%d: %s\n", i+1, total, label)
+			}
+			workDir := filepath.Join(tmpDir, fmt.Sprintf("part-%d", i+1))
+			res := indexOne(root, proj, workDir, env)
+			if res.dbPath == "" {
+				skipped++
+				fmt.Fprintf(os.Stderr, "Warning: skipped %s: %s\n", res.label, res.errMsg)
+				continue
+			}
+			partDBs = append(partDBs, res.dbPath)
+		}
+	}
+
+	if len(partDBs) == 0 {
+		return "", 0, skipped, total, fmt.Errorf("failed to index project")
+	}
+
+	if len(partDBs) == 1 {
+		if err := copyFile(partDBs[0], outputDB); err != nil {
+			return "", 0, skipped, total, err
+		}
+	} else {
+		if err := merge.MergeSQLiteIndexes(partDBs, outputDB); err != nil {
+			return "", 0, skipped, total, err
+		}
+	}
+
+	return outputDB, len(partDBs), skipped, total, nil
+}
+
+func runIndexer(binary, npxPackage, npxVersion, goPackage, rustupComponent, cwd string, args, env []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, args...)
@@ -187,24 +412,60 @@ func runIndexer(binary, npxPackage, npxVersion, goPackage, cwd string, args, env
 	if ctx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("%s timed out after %ds", binary, IndexTimeout)
 	}
-	if strings.Contains(strings.ToLower(string(out)), "not found") {
-		if goPackage != "" {
-			return runGoInstallIndexer(goPackage, binary, cwd, args, env)
-		}
-		return runNpxIndexer(npxPackage, npxVersion, cwd, args, env)
+	outLower := strings.ToLower(string(out))
+	if strings.Contains(outLower, "not found") {
+		return runIndexerFallback(binary, npxPackage, npxVersion, goPackage, rustupComponent, cwd, args, env)
 	}
 	if _, lookErr := exec.LookPath(binary); lookErr != nil {
-		if goPackage != "" {
-			return runGoInstallIndexer(goPackage, binary, cwd, args, env)
-		}
-		return runNpxIndexer(npxPackage, npxVersion, cwd, args, env)
+		return runIndexerFallback(binary, npxPackage, npxVersion, goPackage, rustupComponent, cwd, args, env)
 	}
 	return fmt.Errorf("%s failed: %s", binary, string(out))
+}
+
+func runIndexerFallback(binary, npxPackage, npxVersion, goPackage, rustupComponent, cwd string, args, env []string) error {
+	if goPackage != "" {
+		return runGoInstallIndexer(goPackage, binary, cwd, args, env)
+	}
+	if rustupComponent != "" {
+		return runRustupIndexer(rustupComponent, binary, cwd, args, env)
+	}
+	if npxPackage != "" {
+		return runNpxIndexer(npxPackage, npxVersion, cwd, args, env)
+	}
+	return fmt.Errorf("binary %q not found and no fallback available", binary)
+}
+
+func goBinPath(binary string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "go", "bin", binary)
 }
 
 func runGoInstallIndexer(goPackage, binary, cwd string, args, env []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
 	defer cancel()
+
+	goBinary := goBinPath(binary)
+	if goBinary != "" {
+		if _, err := os.Stat(goBinary); err == nil {
+			cmd := exec.CommandContext(ctx, goBinary, args...)
+			cmd.Dir = cwd
+			cmd.Env = env
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				return nil
+			}
+			if ctx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("%s timed out after %ds", binary, IndexTimeout)
+			}
+			if _, lookErr := exec.LookPath(binary); lookErr == nil {
+				return fmt.Errorf("%s failed: %s", binary, string(out))
+			}
+		}
+	}
+
 	install := exec.CommandContext(ctx, "go", "install", goPackage+"@latest")
 	install.Dir = cwd
 	install.Env = env
@@ -215,6 +476,41 @@ func runGoInstallIndexer(goPackage, binary, cwd string, args, env []string) erro
 		}
 		return fmt.Errorf("failed to install %s via go install: %s", binary, string(out))
 	}
+
+	runBin := binary
+	if goBinary != "" {
+		if _, statErr := os.Stat(goBinary); statErr == nil {
+			runBin = goBinary
+		}
+	}
+	cmd := exec.CommandContext(ctx, runBin, args...)
+	cmd.Dir = cwd
+	cmd.Env = env
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("%s timed out after %ds", binary, IndexTimeout)
+		}
+		return fmt.Errorf("%s failed: %s", binary, string(out))
+	}
+	return nil
+}
+
+func runRustupIndexer(component, binary, cwd string, args, env []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), IndexTimeout*time.Second)
+	defer cancel()
+
+	install := exec.CommandContext(ctx, "rustup", "component", "add", component)
+	install.Dir = cwd
+	install.Env = env
+	out, err := install.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("rustup component add %s timed out after %ds", component, IndexTimeout)
+		}
+		return fmt.Errorf("failed to install %s via rustup: %s", component, string(out))
+	}
+
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = cwd
 	cmd.Env = env
@@ -246,7 +542,7 @@ func runNpxIndexer(pkg, version, cwd string, args, env []string) error {
 	return nil
 }
 
-func convertScipToDB(scipPath, dbPath string) error {
+func convertScipToDB(scipPath, dbPath, documentPathPrefix string) error {
 	if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -275,7 +571,24 @@ func convertScipToDB(scipPath, dbPath string) error {
 		return fmt.Errorf("failed to convert index: output not created")
 	}
 
-	return postprocessIndex(dbPath)
+	if err := postprocessIndex(dbPath); err != nil {
+		return err
+	}
+	prefix := strings.TrimPrefix(filepath.ToSlash(documentPathPrefix), "./")
+	if prefix != "" && prefix != "." {
+		return prefixDocumentPaths(dbPath, prefix)
+	}
+	return nil
+}
+
+func prefixDocumentPaths(dbPath, prefix string) error {
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec("UPDATE documents SET relative_path = ? || '/' || relative_path", prefix)
+	return err
 }
 
 func postprocessIndex(dbPath string) error {
@@ -445,8 +758,13 @@ func indexerEnv(projectRoot string) ([]string, error) {
 }
 
 func indexTypescript(root, cacheDir string, projects []string, env []string, replace bool) (string, int, int, int, error) {
+	batchSize, err := tsIndexBatchSize()
+	if err != nil {
+		return "", 0, 0, 0, err
+	}
+	batches := batchProjects(projects, batchSize)
 	workers := indexWorkers()
-	useParallel := len(projects) > 1 && workers > 1
+	useParallel := len(batches) > 1 && workers > 1
 	outputDB := cache.IndexDBPath(cacheDir, replace)
 
 	tmpDir, err := os.MkdirTemp("", "scip-index-*")
@@ -461,25 +779,31 @@ func indexTypescript(root, cacheDir string, projects []string, env []string, rep
 	var partDBs []string
 	skipped := 0
 
+	if showProgress && useParallel {
+		fmt.Fprintf(os.Stderr, "Indexing %d TypeScript projects (%d workers, %s; merge is serial)...\n",
+			total, workers, tsBatchLimitDisplay(batchSize, total))
+	}
+
 	if useParallel {
 		type indexedResult struct {
-			res indexResult
-			idx int
+			res   indexResult
+			idx   int
+			batch []string
 		}
-		ch := make(chan indexedResult, total)
+		ch := make(chan indexedResult, len(batches))
 		var wg sync.WaitGroup
 
 		sem := make(chan struct{}, workers)
-		for i, proj := range projects {
+		for i, batch := range batches {
 			wg.Add(1)
-			go func(idx int, p string) {
+			go func(idx int, b []string) {
 				defer wg.Done()
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				workDir := filepath.Join(tmpDir, fmt.Sprintf("part-%d", idx+1))
-				res := indexOneTSProject(root, p, workDir, env)
-				ch <- indexedResult{res: res, idx: idx}
-			}(i, proj)
+				res := indexTSProjects(root, b, workDir, env, "")
+				ch <- indexedResult{res: res, idx: idx, batch: b}
+			}(i, batch)
 		}
 
 		go func() {
@@ -490,10 +814,10 @@ func indexTypescript(root, cacheDir string, projects []string, env []string, rep
 		var results []indexedResult
 		completed := 0
 		for r := range ch {
-			completed++
+			completed += len(r.batch)
 			results = append(results, r)
 			if r.res.dbPath == "" {
-				skipped++
+				skipped += len(r.batch)
 				fmt.Fprintf(os.Stderr, "Warning: skipped %s: %s\n", r.res.label, r.res.errMsg)
 			} else if showProgress {
 				fmt.Fprintf(os.Stderr, "Indexed %d/%d: %s\n", completed, total, r.res.label)
@@ -507,14 +831,25 @@ func indexTypescript(root, cacheDir string, projects []string, env []string, rep
 			}
 		}
 	} else {
-		for i, proj := range projects {
+		indexed := 0
+		for i, batch := range batches {
+			label := projectBatchLabel(batch)
 			if showProgress {
-				fmt.Fprintf(os.Stderr, "Indexing %d/%d: %s\n", i+1, total, proj)
+				end := indexed + len(batch)
+				fmt.Fprintf(os.Stderr, "Indexing %d-%d/%d: %s\n", indexed+1, end, total, label)
 			}
-			workDir := filepath.Join(tmpDir, fmt.Sprintf("part-%d", i+1))
-			res := indexOneTSProject(root, proj, workDir, env)
+			var directOutput string
+			if len(batches) == 1 {
+				directOutput = outputDB
+			}
+			workDir := cacheDir
+			if directOutput == "" {
+				workDir = filepath.Join(tmpDir, fmt.Sprintf("part-%d", i+1))
+			}
+			res := indexTSProjects(root, batch, workDir, env, directOutput)
+			indexed += len(batch)
 			if res.dbPath == "" {
-				skipped++
+				skipped += len(batch)
 				fmt.Fprintf(os.Stderr, "Warning: skipped %s: %s\n", res.label, res.errMsg)
 				continue
 			}
@@ -527,8 +862,10 @@ func indexTypescript(root, cacheDir string, projects []string, env []string, rep
 	}
 
 	if len(partDBs) == 1 {
-		if err := copyFile(partDBs[0], outputDB); err != nil {
-			return "", 0, skipped, total, err
+		if partDBs[0] != outputDB {
+			if err := copyFile(partDBs[0], outputDB); err != nil {
+				return "", 0, skipped, total, err
+			}
 		}
 	} else {
 		if err := merge.MergeSQLiteIndexes(partDBs, outputDB); err != nil {
@@ -592,47 +929,58 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 		return outputDB, skipped, total, nil
 
 	case project.LanguagePython:
-		tmpDir, err := os.MkdirTemp("", "scip-index-*")
+		projects, err := discover.DiscoverPythonProjects(absRoot)
 		if err != nil {
 			return "", 0, 0, err
 		}
-		defer os.RemoveAll(tmpDir)
-
-		indexScip := filepath.Join(tmpDir, "index.scip")
-		if err := runIndexer("scip-python", "@sourcegraph/scip-python", scip.ScipPythonVersion, "", absRoot, []string{"index", ".", "--output", indexScip}, env); err != nil {
-			return "", 0, 0, err
-		}
-
-		out := cache.IndexDBPath(cacheDir, replace)
-		if err := convertScipToDB(indexScip, out); err != nil {
+		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, projects, env, replace, indexOnePythonProject)
+		if err != nil {
 			return "", 0, 0, err
 		}
 		if doLog {
-			logIndexComplete(out, lang, 0, 0)
+			projCount := 0
+			if total > 1 {
+				projCount = total
+			}
+			logIndexComplete(outputDB, lang, projCount, skipped)
 		}
-		return out, 0, 1, nil
+		return outputDB, skipped, total, nil
 
 	case project.LanguageGolang:
-		tmpDir, err := os.MkdirTemp("", "scip-index-*")
+		modules, err := discover.DiscoverGolangModules(absRoot)
 		if err != nil {
 			return "", 0, 0, err
 		}
-		defer os.RemoveAll(tmpDir)
-
-		indexScip := filepath.Join(tmpDir, "index.scip")
-		goEnv := os.Environ()
-		if err := runIndexer("scip-go", "", "", scip.ScipGoPackage, absRoot, []string{"--output", indexScip}, goEnv); err != nil {
-			return "", 0, 0, err
-		}
-
-		out := cache.IndexDBPath(cacheDir, replace)
-		if err := convertScipToDB(indexScip, out); err != nil {
+		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, modules, os.Environ(), replace, indexOneGolangModule)
+		if err != nil {
 			return "", 0, 0, err
 		}
 		if doLog {
-			logIndexComplete(out, lang, 0, 0)
+			projCount := 0
+			if total > 1 {
+				projCount = total
+			}
+			logIndexComplete(outputDB, lang, projCount, skipped)
 		}
-		return out, 0, 1, nil
+		return outputDB, skipped, total, nil
+
+	case project.LanguageRust:
+		crates, err := discover.DiscoverRustCrates(absRoot)
+		if err != nil {
+			return "", 0, 0, err
+		}
+		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, crates, os.Environ(), replace, indexOneRustCrate)
+		if err != nil {
+			return "", 0, 0, err
+		}
+		if doLog {
+			projCount := 0
+			if total > 1 {
+				projCount = total
+			}
+			logIndexComplete(outputDB, lang, projCount, skipped)
+		}
+		return outputDB, skipped, total, nil
 
 	default:
 		return "", 0, 0, fmt.Errorf("unsupported language '%s'", lang)

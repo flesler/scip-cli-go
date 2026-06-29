@@ -14,18 +14,7 @@ coverage.out
 tmp/
 .cache/
 TODO.md
-problems.md
 dogfood.md
-
-# Python leftovers (repo is Go-only)
-.venv/
-venv/
-__pycache__/
-*.py[cod]
-dist/
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
 
 # IDE / OS
 .idea/

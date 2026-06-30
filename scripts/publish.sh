@@ -11,6 +11,8 @@ VERSION_FILE="cmd/scip-cli/main.go"
 MODULE_INSTALL="github.com/flesler/scip-cli-go/v2/cmd/scip-cli"
 SMOKE_ATTEMPTS="${SCIP_CLI_PUBLISH_SMOKE_ATTEMPTS:-12}"
 SMOKE_SLEEP_SEC="${SCIP_CLI_PUBLISH_SMOKE_SLEEP_SEC:-15}"
+GH_SCRIPTS="${GH_SCRIPTS:-${HOME}/.claude/skills/gh/scripts}"
+SYNC_RELEASE="${GH_SCRIPTS}/sync-github-release.sh"
 
 usage() {
 	cat <<'EOF'
@@ -79,7 +81,7 @@ if [[ -n "${BUMP}" ]]; then
 	echo "New version: ${NEW_VERSION}"
 
 	git add "${VERSION_FILE}"
-	git commit -m "Release ${NEW_VERSION}."
+	git commit -m "v${NEW_VERSION}"
 fi
 
 make build
@@ -99,7 +101,7 @@ if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
 fi
 
 echo "Creating git tag v${VERSION}..."
-git tag -a "v${VERSION}" -m "Release ${VERSION}."
+git tag -a "v${VERSION}" -m "v${VERSION}"
 git push origin HEAD "v${VERSION}"
 
 REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
@@ -107,19 +109,12 @@ if [[ -z "${REPO}" ]]; then
 	REPO="flesler/scip-cli-go"
 fi
 
-if gh release view "v${VERSION}" -R "${REPO}" >/dev/null 2>&1; then
-	echo "GitHub release v${VERSION} already exists"
-else
-	echo "Creating GitHub release v${VERSION}..."
-	gh release create "v${VERSION}" -R "${REPO}" --title "v${VERSION}" --notes "$(cat <<EOF
-Release ${VERSION}.
-
+"${SYNC_RELEASE}" "${REPO}" "${VERSION}" --install "$(cat <<EOF
 \`\`\`bash
-go install ${MODULE_INSTALL}@v${VERSION}
+go install ${MODULE_INSTALL}@v{{VERSION}}
 \`\`\`
 EOF
-)"
-fi
+)" --execute
 
 echo "Smoke testing go install @v${VERSION}..."
 SMOKE_DIR="$(mktemp -d)"

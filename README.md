@@ -1,6 +1,57 @@
 # scip-cli-go
 
-Port of [scip-cli](https://github.com/flesler/scip-cli) to Go.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Go implementation of [scip-cli](https://github.com/flesler/scip-cli) — fast code intelligence via SCIP indexes for TypeScript/JavaScript, Python, Go, and Rust.
+
+Feature and CLI output parity with upstream **scip-cli 2.5.0** (Python reference). Cross-language integration tests compare stdout/stderr/exit codes against `scip-cli` on PATH.
+
+## Why
+
+AI agents waste tokens on grep and file scanning. scip-cli gives precise, type-aware navigation in milliseconds — and `analyze` surfaces dead code, cycles, and coupling from the SCIP index.
+
+## Installation
+
+```bash
+go install github.com/flesler/scip-cli-go/v2/cmd/scip-cli@latest
+scip-cli --version   # must show 2.5.0
+```
+
+(`@latest` → current release. Pin with `@v2.5.0` if you need an exact version.)
+
+The installed binary is `scip-cli` — rename or symlink to `scip-cli-go` so you do **not** shadow Python `scip-cli` on PATH.
+
+Or download a release binary from [GitHub Releases](https://github.com/flesler/scip-cli-go/releases).
+
+**Prerequisites:** Node.js (`npx`) for TypeScript/Python; Go toolchain for Go projects; Rust toolchain for Rust projects. Indexers install on first use; the `scip` converter auto-downloads to `~/.cache/scip-cli/bin/`.
+
+## For AI Agents
+
+```bash
+scip-cli skill ~/.claude/skills/scip-cli/
+scip-cli skill   # dump SKILL.md to stdout
+```
+
+## Usage
+
+```bash
+scip-cli <command> [arguments]
+```
+
+| Command | Purpose |
+|---------|---------|
+| `refs` | Find references to a symbol |
+| `code` | Definition + source snippet |
+| `search` | Search symbols by pattern |
+| `symbols` | List symbols in a file |
+| `rdeps` | Reverse file dependencies |
+| `deps` | Outbound dependencies |
+| `members` | Class/interface members |
+| `analyze` | SQL health dashboards |
+| `reindex` | Force re-index |
+| `skill` | Install or dump SKILL.md |
+
+See `scip-cli skill` or upstream [README](https://github.com/flesler/scip-cli) for pipelines, analyze tiers, and `.scip-cli.json` options.
 
 ## Development
 
@@ -10,9 +61,10 @@ Requires Go 1.25+ at `~/.local/go-sdk/go` (install via [go.dev/dl](https://go.de
 make setup          # bin/golangci-lint, bin/goimports, git hooks
 make build          # bin/scip-cli-go
 make test           # unit + e2e
-make test-cross     # Python scip-cli vs bin/scip-cli-go output parity (needs npx + ../scip-cli)
+make test-cross     # Python scip-cli vs bin/scip-cli-go output parity (needs npx + scip-cli)
 make fmt            # gofmt + goimports (whole tree)
 make lint           # go build, go vet, golangci-lint
+make sync-upstream  # refresh fixtures/docs from upstream Python repo
 ```
 
 Git hooks run on every commit (after `make setup`):
@@ -30,23 +82,9 @@ Manual full check (same as CI): `make pre-commit`.
 
 Release: `scripts/publish.sh patch` (or `minor` / `major`) — test, version bump, tag, push, GitHub release, `go install` smoke test.
 
-**Do not** install this binary as `scip-cli` on PATH; the Python package keeps that name.
-
-### Install (users)
-
-```bash
-go install github.com/flesler/scip-cli-go/v2/cmd/scip-cli@latest
-```
-
-(`@latest` → current release. Pin with `@v2.5.0` if you need an exact version.)
-
-The installed binary is `scip-cli` — rename or symlink to `scip-cli-go` if you want to avoid clashing with Python `scip-cli`.
-
-Or download a release binary from [GitHub Releases](https://github.com/flesler/scip-cli-go/releases).
+**Cross-language parity:** `internal/cross/cross_test.go` runs the same commands against Python `scip-cli` and `bin/scip-cli-go` on the shared `typescript-project` fixture.
 
 ### Supported projects
-
-Auto-detects language from project markers:
 
 | Language | Markers | Indexer |
 |----------|---------|---------|
@@ -73,3 +111,7 @@ rustup component add rust-analyzer
 ### Python / `test-cross`
 
 This repo is Go-only for build and hooks. Python appears only for **cross-comparison tests** (`make test-cross`), which diff output against the reference [scip-cli](https://github.com/flesler/scip-cli) install (`scip-cli` on PATH, or `../scip-cli/.venv/bin/scip-cli` from a sibling checkout). That venv lives in the Python repo, not here.
+
+## License
+
+MIT

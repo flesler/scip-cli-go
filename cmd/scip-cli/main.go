@@ -177,6 +177,7 @@ func runSymbols(argv []string) error {
 	fs := newFlagSet("symbols")
 	limit := fs.Int("limit", 10, "max symbols")
 	pathFlag := fs.String("path", "", "limit to file or directory")
+	freq := fs.Bool("freq", false, "sort symbols by frequency")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -188,6 +189,7 @@ func runSymbols(argv []string) error {
 		"file":       rest[0],
 		"limit":      *limit,
 		"path_scope": pathScope(*pathFlag),
+		"freq":       *freq,
 	})
 }
 

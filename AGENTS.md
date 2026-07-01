@@ -1,0 +1,75 @@
+---
+description: scip-cli dev workflow (Go)
+alwaysApply: true
+---
+
+# scip-cli agent
+
+**Work from repo root.** CLI reference: `scip-cli skill` (source: `internal/commands/SKILL.md`).
+
+**Dev binary:** `make build` → `bin/scip-cli-go` only. **Never** install or symlink as `scip-cli` on PATH — PyPI / editable Python keeps that name.
+
+```bash
+make build
+./bin/scip-cli-go --version
+make test
+```
+
+Optional: `export PATH="$(pwd)/bin:$PATH"` in this repo only, then invoke `scip-cli-go` (not `scip-cli`).
+
+Node.js + `npx` required for e2e/integration tests (`scip-typescript`). Go toolchain required to index Go projects (`scip-go` via `go install`). Optional: `SCIP_CLI_DEBUG=1`.
+
+## Lint / test
+
+| Task | Command |
+|------|---------|
+| Full suite | `make test` |
+| Publish gate | `scripts/test.sh` or `make pre-commit test-unit` |
+| Release | `make publish` or `scripts/publish.sh [patch\|minor\|major]` |
+| Unit only | `make test-unit` |
+| E2e | `make test-e2e` |
+| Python parity | `make test-cross` |
+| Lint / format | `make lint` / `make fmt` |
+| Pre-commit | `make setup` then hooks run on commit |
+
+E2e indexes `testdata/fixtures/typescript-project/` once per run via `internal/e2e`.
+
+Cross tests (`internal/cross`) index the same fixture once via Python `scip-cli reindex`, then diff stdout/stderr against `bin/scip-cli-go` for every query command. Uses PATH `scip-cli` when it is the Python build (never `scip-cli-go`); falls back to `../scip-cli/.venv/bin/scip-cli`.
+
+## Pre-commit
+
+`make setup` installs `bin/golangci-lint`, `bin/goimports`, and sets `core.hooksPath=scripts/hooks` (bash — no Python venv in this repo). Hooks: gofmt, goimports, `go build`+`vet`, golangci-lint, `go mod tidy` check. Manual: `make pre-commit`.
+
+## Dogfood
+
+Use `./bin/scip-cli-go` (never install as `scip-cli` on PATH):
+
+```bash
+make build
+./bin/scip-cli-go reindex
+./bin/scip-cli-go analyze --limit 25
+./bin/scip-cli-go analyze internal/queries --limit 20   # drill into hubs
+```
+
+Project-wide analyze skips test paths by default; `--include-tests` to include.
+
+Prioritize cycles → dead exports → same-file only → stale types.
+
+## Code map
+
+| Area | Path |
+|------|------|
+| Commands | `internal/commands/` |
+| Analyze | `internal/analyze/` |
+| Index build | `internal/indexing/` |
+| SQL helpers | `internal/sqlhelp/` |
+| E2e | `internal/e2e/` |
+| Fixtures | `testdata/fixtures/` (mirrored from upstream `tests/fixtures/`) |
+
+**Upstream mirror:** `make sync-upstream` / `make check-upstream` — copies allowlisted paths from [flesler/scip-cli](https://github.com/flesler/scip-cli) per `scripts/upstream.manifest`; Go-only SKILL tweaks in `scripts/overlays/`.
+
+**Import rule:** always `"github.com/flesler/scip-cli-go/v2/internal/sqlhelp"` — never flip package/dir names.
+
+**SQL ESCAPE:** backtick SQL → `ESCAPE '\'`; double-quoted Go strings → `ESCAPE '\\'`.
+
+Docs: `README.md` (users), `internal/commands/SKILL.md` (agents, synced from upstream). After upstream flag changes, `make sync-upstream`.

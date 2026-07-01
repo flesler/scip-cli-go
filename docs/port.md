@@ -200,3 +200,52 @@ Go is **moderately suitable** for AI-assisted coding when:
 - ❌ Complex generic programming or metaprogramming is required (Go has limited support)
 
 For AI agents specifically, Go's predictability and fast feedback loop partially offset its verbosity and strictness. However, the high friction time (5.7 hours for a medium-sized project) suggests that languages with better type inference and clearer API documentation may yield higher AI productivity.
+
+---
+
+## Experimental Task: Add --freq Flag to Symbols Command
+
+**Task**: Add `--freq` flag to sort symbols by frequency of occurrence
+
+### Execution Summary
+- **Start time**: Tue Jun 30 03:40:00 PM -03 2026
+- **End time**: Tue Jun 30 03:48:06 PM -03 2026
+- **Total elapsed time**: ~8 minutes
+- **Tool calls made**: ~25 calls
+
+### Changes Made
+- **cmd/scip-cli/main.go**: Added `--freq` boolean flag to `runSymbols()` function and passed it to `SymbolsMain()` via args map
+- **internal/commands/symbols.go**:
+  - Modified `SymbolsMain()` to read and handle the `freq` parameter
+  - Added `sortByFrequency()` helper function that counts symbol name occurrences and sorts by frequency (descending), with alphabetical secondary sort for ties
+  - Added `"sort"` import
+- **internal/commands/symbols_test.go**: Created new test file with 3 tests verifying frequency sorting behavior
+
+### Problems Encountered
+- **Issue 1 (sed over-matching)**: Initial sed command added `"freq": *freq,` to ALL command maps instead of just the symbols command. Fixed by restoring from backup and using precise line number targeting.
+- **Issue 2 (formatting)**: gofmt reported formatting issues in symbols.go due to inconsistent spacing in comments. Fixed by running `gofmt -w`.
+
+### Tests Added
+- **TestSortByFrequency_basic**: Verifies that symbols are sorted by frequency (bar appears 3x, foo 2x, baz 1x)
+- **TestSortByFrequency_tiesAlphabetical**: Verifies that symbols with equal frequency are sorted alphabetically (alpha, middle, zebra)
+- **TestSortByFrequency_empty**: Verifies edge case of empty slice
+
+### Gate Results
+- Tests: **PASSED** (all 24 test packages, including 3 new tests)
+- Go vet: **PASSED** (clean)
+- Formatting: **PASSED** (gofmt clean after fix)
+
+### AI Experience Notes
+This task was straightforward once I understood the codebase structure. The key observations:
+
+1. **Type safety helped**: Go's strict type system caught the missing "sort" import immediately during compilation, preventing a runtime error.
+
+2. **Pointer/value confusion avoided**: By checking if freq exists in the args map with a type assertion (`if f, ok := args["freq"].(bool); ok`), I safely handled the optional boolean parameter without pointer dereferencing issues.
+
+3. **Sed tooling friction**: Using sed for multiple edits was error-prone. A single sed substitution matched multiple lines, requiring a restore from backup. For future multi-line edits, I should use more targeted approaches or write the entire file at once.
+
+4. **Testing simplicity**: The sortByFrequency function is pure (no side effects), making it trivial to test with simple struct slices. No database setup needed.
+
+5. **Go fmt discipline**: Go's formatter is non-negotiable - any deviation causes lint failures. This is actually helpful for AI coding as it enforces consistency automatically.
+
+Overall, adding a CLI flag in Go was mechanical and predictable: add flag parsing → pass to handler → implement logic → test. The compiler acted as a reliable guide throughout.

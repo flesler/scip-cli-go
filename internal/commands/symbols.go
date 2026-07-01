@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/flesler/scip-cli-go/v2/internal/clierr"
 	"github.com/flesler/scip-cli-go/v2/internal/output"
@@ -21,6 +22,10 @@ func SymbolsMain(args map[string]interface{}) error {
 	pathScope := args["path_scope"].(string)
 	filePattern := args["file"].(string)
 	limit := args["limit"].(int)
+	freq := false
+	if f, ok := args["freq"].(bool); ok {
+		freq = f
+	}
 
 	filePath, err := session.ResolveOneFile(db, filePattern, pathScope)
 	if err != nil {
@@ -40,6 +45,10 @@ func SymbolsMain(args map[string]interface{}) error {
 
 	syms = output.LimitAndWarn(syms, limit, "symbols")
 
+	if freq {
+		syms = sortByFrequency(syms)
+	}
+
 	for _, sym := range syms {
 		if symbols.IsModuleSymbol(sym.Symbol) {
 			continue
@@ -51,4 +60,32 @@ func SymbolsMain(args map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+func sortByFrequency(syms []queries.FileSymbol) []queries.FileSymbol {
+	// Count occurrences of each symbol name
+	counts := make(map[string]int)
+	for _, sym := range syms {
+		name := symbols.ExtractLeafName(sym.Symbol)
+		counts[name]++
+	}
+
+	// Create a copy to sort
+	sorted := make([]queries.FileSymbol, len(syms))
+	copy(sorted, syms)
+
+	// Sort by frequency (descending), then by name (ascending) for ties
+	sort.SliceStable(sorted, func(i, j int) bool {
+		nameI := symbols.ExtractLeafName(sorted[i].Symbol)
+		nameJ := symbols.ExtractLeafName(sorted[j].Symbol)
+		countI := counts[nameI]
+		countJ := counts[nameJ]
+
+		if countI != countJ {
+			return countI > countJ // Higher frequency first
+		}
+		return nameI < nameJ // Alphabetical for ties
+	})
+
+	return sorted
 }

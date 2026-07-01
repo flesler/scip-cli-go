@@ -6,6 +6,13 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "${ROOT}/scripts/dev-env.sh"
 cd "${ROOT}"
 
+# Auto-fix trailing whitespace in .md files
+git diff --cached --name-only --diff-filter=ACM -- '*.md' | while IFS= read -r f; do
+	[[ -n "${f}" ]] || continue
+	sed -i 's/[[:space:]]*$//' "${f}"
+	git add "${f}"
+done
+
 git diff --cached --check
 
 STAGED_GO="$(git diff --cached --name-only --diff-filter=ACM -- '*.go' || true)"

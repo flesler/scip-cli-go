@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Bump version (optional), test, tag, push, GitHub release, go install smoke test.
 set -euo pipefail
+
+if [ ! -t 1 ]; then
+    echo "Error: publish.sh must be run unfiltered (stdout is piped)" >&2
+    echo "Run directly without | tail, | head, etc." >&2
+    exit 1
+fi
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 # shellcheck source=scripts/dev-env.sh

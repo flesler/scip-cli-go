@@ -341,12 +341,20 @@ func TestAnalyzePriorityHigh(t *testing.T) {
 
 func TestDepsFile(t *testing.T) {
 	requireIndex(t)
-	res := runCLI("deps", helperFile, "--limit", "10")
+	res := runCLI("deps", userFile, "--limit", "50")
 	if res.Code != 0 {
 		t.Fatalf("exit %d stderr=%s", res.Code, res.Stderr)
 	}
-	if res.Stdout == "" {
-		t.Fatal("expected deps output")
+	// After filtering external symbols, all deps should have file:line format
+	rawLines := strings.Split(strings.TrimSpace(res.Stdout), "\n")
+	for _, line := range rawLines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !strings.Contains(line, ":") {
+			t.Fatalf("expected file:line format but got bare symbol: %s", line)
+		}
 	}
 }
 

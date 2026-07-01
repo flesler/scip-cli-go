@@ -62,6 +62,12 @@ func kindToDisplay(kind symbols.SymbolKind) string {
 
 func searchRowsWithKind(db *sql.DB, query string, params []interface{}, kind symbols.SymbolKind, limit int) ([]queries.SymbolResult, error) {
 	var results []queries.SymbolResult
+	scanLimit := limit * 10
+	if scanLimit < 1000 {
+		scanLimit = 1000
+	}
+	query = fmt.Sprintf("%s LIMIT ?", query)
+	params = append(params, scanLimit)
 	rows, err := sqlhelp.DebugExecute(db, query, params...)
 	if err != nil {
 		return nil, err

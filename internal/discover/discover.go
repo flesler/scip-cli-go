@@ -260,9 +260,6 @@ func discoverMarkerProjects(root string, markerNames map[string]bool, rootMarker
 	if len(projects) > 0 {
 		return projects, nil
 	}
-	if _, err := os.Stat(filepath.Join(root, rootMarker)); err == nil {
-		return []string{"."}, nil
-	}
 	return []string{"."}, nil
 }
 
@@ -275,16 +272,6 @@ func DiscoverPythonProjects(root string) ([]string, error) {
 	}
 	if len(projects) > 0 {
 		return projects, nil
-	}
-	root, err = filepath.Abs(root)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(filepath.Join(root, "pyproject.toml")); err == nil {
-		return []string{"."}, nil
-	}
-	if _, err := os.Stat(filepath.Join(root, "setup.py")); err == nil {
-		return []string{"."}, nil
 	}
 	return []string{"."}, nil
 }

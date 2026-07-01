@@ -604,7 +604,8 @@ func postprocessIndex(dbPath string) error {
 	}
 	defer tx.Rollback()
 
-	if err := trimUnusedColumns(tx); err != nil {
+	keepExternal := os.Getenv("SCIP_CLI_KEEP_EXTERNAL") == "1"
+	if err := trimUnusedColumns(tx, keepExternal); err != nil {
 		return err
 	}
 	if err := trimMentionsToKnownSymbols(tx); err != nil {
@@ -621,7 +622,7 @@ type sqlExec interface {
 	QueryRow(query string, args ...interface{}) *sql.Row
 }
 
-func trimUnusedColumns(db sqlExec) error {
+func trimUnusedColumns(db sqlExec, keepExternal bool) error {
 	if _, err := db.Exec(`CREATE TABLE documents_new (
 		id INTEGER PRIMARY KEY,
 		relative_path TEXT NOT NULL UNIQUE
@@ -639,6 +640,26 @@ func trimUnusedColumns(db sqlExec) error {
 	}
 
 	exclude := symbols.SQLExcludeVariableSymbols("symbol")
+
+	whereClause := exclude
+	if !keepExternal {
+		// Keep symbols that either:
+		// 1. Are defined in the project (have defn_enclosing_ranges entries)
+		// 2. Are structural symbols needed for type analysis (type literals, parameters)
+		// 3. Are functions/methods (even without defs, they may be project code)
+		//
+		// SCIP symbol format patterns (language-agnostic):
+		// - %typeLiteral% : Type/interface fields (e.g., Options#typeLiteral0:verbose.)
+		// - %).(% : Function parameters (e.g., greet().(name))
+		// - %().% : Functions and methods (e.g., Widget.run()., greet().)
+		whereClause = fmt.Sprintf(`(%s) AND (
+			EXISTS (SELECT 1 FROM defn_enclosing_ranges der WHERE der.symbol_id = global_symbols.id)
+			OR symbol LIKE '%%typeLiteral%%'
+			OR symbol LIKE '%%). (%%'
+			OR symbol LIKE '%%().%%'
+		)`, exclude)
+	}
+
 	if _, err := db.Exec(`CREATE TABLE global_symbols_new (
 		id INTEGER PRIMARY KEY,
 		symbol TEXT NOT NULL UNIQUE,
@@ -649,7 +670,7 @@ func trimUnusedColumns(db sqlExec) error {
 	}
 	if _, err := db.Exec(fmt.Sprintf(`INSERT INTO global_symbols_new
 		SELECT id, symbol, display_name, kind FROM global_symbols
-		WHERE %s`, exclude)); err != nil {
+		WHERE %s`, whereClause)); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`DROP TABLE global_symbols`); err != nil {

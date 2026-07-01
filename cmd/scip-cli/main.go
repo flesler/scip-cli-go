@@ -295,11 +295,13 @@ func runReindex(argv []string) error {
 		pathArgs = append(pathArgs, s)
 		return nil
 	})
+	withExternal := fs.Bool("with-external", false, "keep external library symbols without definitions (increases index size ~5x)")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
 	return commands.ReindexMain(map[string]interface{}{
-		"path": pathArgs,
+		"path":          pathArgs,
+		"with_external": *withExternal,
 	})
 }
 

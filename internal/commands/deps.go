@@ -35,6 +35,8 @@ func depsFromSymbol(db *sql.DB, symbolID int, limit int) ([]queries.SymbolResult
 		FROM mentions m
 		JOIN chunks c ON m.chunk_id = c.id
 		JOIN global_symbols gs ON m.symbol_id = gs.id
+		JOIN defn_enclosing_ranges def_der ON def_der.symbol_id = gs.id
+		JOIN documents def_d ON def_der.document_id = def_d.id
 		WHERE c.document_id = ?
 		  AND c.start_line <= ?
 		  AND c.end_line >= ?
@@ -74,6 +76,8 @@ func depsFromFile(db *sql.DB, filePath string, limit int) ([]queries.SymbolResul
 		FROM mentions m
 		JOIN chunks c ON m.chunk_id = c.id
 		JOIN global_symbols gs ON m.symbol_id = gs.id
+		JOIN defn_enclosing_ranges def_der ON def_der.symbol_id = gs.id
+		JOIN documents def_d ON def_der.document_id = def_d.id
 		WHERE c.document_id = ?
 		  AND m.role != 1
 		  AND gs.id NOT IN (

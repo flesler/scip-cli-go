@@ -19,6 +19,11 @@ func ReindexMain(args map[string]interface{}) error {
 	}
 
 	pathArgs := args["path"].([]string)
+	withExternal := false
+	if v, ok := args["with_external"].(bool); ok {
+		withExternal = v
+	}
+
 	if len(pathArgs) > 0 && lang != project.LanguageTypeScript {
 		fmt.Fprintln(os.Stderr, "Error: reindex --path is only supported for TypeScript projects")
 		return clierr.Exit(1)
@@ -42,6 +47,11 @@ func ReindexMain(args map[string]interface{}) error {
 		if err := scope.SaveIndexScope(root, nil); err != nil {
 			return err
 		}
+	}
+
+	if withExternal {
+		os.Setenv("SCIP_CLI_KEEP_EXTERNAL", "1")
+		defer os.Unsetenv("SCIP_CLI_KEEP_EXTERNAL")
 	}
 
 	if err := indexing.Reindex(root, true); err != nil {

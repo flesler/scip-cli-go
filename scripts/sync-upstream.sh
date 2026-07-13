@@ -88,7 +88,7 @@ ensure_sparse_clone() {
 	git -C "${CACHE}" remote set-url origin "${UPSTREAM_REPO}"
 	git -C "${CACHE}" fetch --depth=1 origin "${ref}"
 	git -C "${CACHE}" checkout --detach FETCH_HEAD
-	git -C "${CACHE}" sparse-checkout set scip_cli/SKILL.md tests/fixtures .github/ISSUE_TEMPLATE CODE_OF_CONDUCT.md LICENSE
+	git -C "${CACHE}" sparse-checkout set scip_cli/SKILL.md tests/fixtures .github/ISSUE_TEMPLATE CODE_OF_CONDUCT.md LICENSE .cursor/commands
 }
 
 resolve_upstream_root() {

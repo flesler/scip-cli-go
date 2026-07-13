@@ -19,15 +19,18 @@ import (
 )
 
 const (
-	helperFile   = "src/helper.ts"
-	widgetFile   = "src/widget.ts"
-	consumerFile = "src/consumer.ts"
-	userFile     = "src/user.ts"
-	fnGreet      = "greet"
-	typeOptions  = "Options"
-	fieldVerbose = "verbose"
-	methodRun    = "Widget.run"
-	classWidget  = "Widget"
+	helperFile            = "src/helper.ts"
+	widgetFile            = "src/widget.ts"
+	consumerFile          = "src/consumer.ts"
+	userFile              = "src/user.ts"
+	mutationAggregateFile = "src/models/MutationAggregate.ts"
+	fnGreet               = "greet"
+	typeOptions           = "Options"
+	fieldVerbose          = "verbose"
+	methodRun             = "Widget.run"
+	classWidget           = "Widget"
+	typeErrorCode         = "ErrorCode"
+	fieldErrorCode        = "errorCode"
 )
 
 var (
@@ -236,6 +239,42 @@ func TestSearchQualifiedTypeField(t *testing.T) {
 	}
 	if !strings.Contains(res.Stdout, helperFile+":2") {
 		t.Fatalf("expected line 2 in %q", res.Stdout)
+	}
+}
+
+func TestSearchDedupesCollapsedTypeLiteralFields(t *testing.T) {
+	requireIndex(t)
+	res := runCLI("search", typeErrorCode, "--limit", "10")
+	if res.Code != 0 {
+		t.Fatalf("exit %d stderr=%s", res.Code, res.Stderr)
+	}
+	lines := strings.Split(strings.TrimSpace(res.Stdout), "\n")
+	seen := make(map[string]bool)
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if ln == "" {
+			continue
+		}
+		if seen[ln] {
+			t.Fatalf("duplicate search lines:\n%s", res.Stdout)
+		}
+		seen[ln] = true
+	}
+	hasType := false
+	hasAggregateField := false
+	for _, ln := range lines {
+		if strings.Contains(ln, typeErrorCode) && !strings.Contains(ln, "property") {
+			hasType = true
+		}
+		if strings.Contains(ln, mutationAggregateFile) && strings.Contains(ln, fieldErrorCode) {
+			hasAggregateField = true
+		}
+	}
+	if !hasType {
+		t.Fatalf("expected non-property ErrorCode match in %q", res.Stdout)
+	}
+	if !hasAggregateField {
+		t.Fatalf("expected %s %s in %q", mutationAggregateFile, fieldErrorCode, res.Stdout)
 	}
 }
 

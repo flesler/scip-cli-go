@@ -60,34 +60,16 @@ func kindToDisplay(kind symbols.SymbolKind) string {
 	return string(kind)
 }
 
-func searchRowsWithKind(db *sql.DB, query string, params []interface{}, kind symbols.SymbolKind, limit int) ([]queries.SymbolResult, error) {
-	var results []queries.SymbolResult
-	scanLimit := limit * 10
+func searchRankSQL() string {
+	return " ORDER BY CASE WHEN gs.symbol LIKE '%#typeLiteral%' THEN 1 ELSE 0 END, length(gs.symbol)"
+}
+
+func searchScanLimit(limit int) int {
+	scanLimit := limit * 50
 	if scanLimit < 1000 {
 		scanLimit = 1000
 	}
-	query = fmt.Sprintf("%s LIMIT ?", query)
-	params = append(params, scanLimit)
-	rows, err := sqlhelp.DebugExecute(db, query, params...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var r queries.SymbolResult
-		if err := rows.Scan(&r.ID, &r.Symbol, &r.DisplayName); err != nil {
-			return nil, err
-		}
-		if symbols.InferKind(r.Symbol) != kind {
-			continue
-		}
-		results = append(results, r)
-		if len(results) > limit {
-			break
-		}
-	}
-	return results, rows.Err()
+	return scanLimit
 }
 
 func resolveFilePath(db *sql.DB, symbolStr string, docPath string) (string, error) {
@@ -111,6 +93,10 @@ type searchResult struct {
 	line     interface{} // int or "?"
 	kind     string
 	name     string
+}
+
+func resultKey(r searchResult) string {
+	return fmt.Sprintf("%s\x00%v\x00%s", r.filePath, r.line, r.name)
 }
 
 func printSearchResults(results []searchResult, namesOnly, pathsOnly bool) {
@@ -146,37 +132,105 @@ func printSearchResults(results []searchResult, namesOnly, pathsOnly bool) {
 	}
 }
 
-func defLocationForSymbol(db *sql.DB, projectRoot string, sym queries.SymbolResult) (string, interface{}, error) {
-	path, startLine, _, err := source.ResolveDefLocation(db, projectRoot, sym.Symbol, sym.ID)
+func rowToResult(db *sql.DB, projectRoot string, symbolID int, symbolStr string, startLine sql.NullInt64, docPath sql.NullString) (searchResult, error) {
+	kind := symbols.InferKind(symbolStr)
+	path, resolvedStart, _, err := source.ResolveDefLocation(db, projectRoot, symbolStr, symbolID)
 	if err != nil {
-		return "", nil, err
+		return searchResult{}, err
 	}
+	var line interface{}
 	if path != "" {
-		if startLine != nil {
-			return path, *startLine + 1, nil
+		if resolvedStart != nil {
+			line = *resolvedStart + 1
+		} else {
+			line = "?"
 		}
-		return path, "?", nil
+	} else {
+		doc := ""
+		if docPath.Valid {
+			doc = docPath.String
+		}
+		path, err = resolveFilePath(db, symbolStr, doc)
+		if err != nil {
+			return searchResult{}, err
+		}
+		if startLine.Valid {
+			line = int(startLine.Int64) + 1
+		} else {
+			line = "?"
+		}
 	}
-	filePath, err := resolveFilePath(db, sym.Symbol, "")
-	if err != nil {
-		return "", nil, err
-	}
-	return filePath, "?", nil
+	return searchResult{
+		filePath: path,
+		line:     line,
+		kind:     kindToDisplay(kind),
+		name:     symbols.ExtractLeafName(symbolStr),
+	}, nil
 }
 
-func searchResultsFromSymbols(db *sql.DB, projectRoot string, syms []queries.SymbolResult, limit int) ([]searchResult, error) {
-	syms = output.LimitAndWarn(syms, limit, "results")
+func collectUniqueFromRows(
+	db *sql.DB,
+	projectRoot string,
+	rows *sql.Rows,
+	limit int,
+	kind *symbols.SymbolKind,
+) ([]searchResult, error) {
 	var results []searchResult
-	for _, sym := range syms {
-		filePath, line, err := defLocationForSymbol(db, projectRoot, sym)
+	seen := make(map[string]bool)
+	for rows.Next() {
+		var symbolID int
+		var symbolStr string
+		var displayName sql.NullString
+		var startLine sql.NullInt64
+		var docPath sql.NullString
+		if err := rows.Scan(&symbolID, &symbolStr, &displayName, &startLine, &docPath); err != nil {
+			return nil, err
+		}
+		if isNoisySymbol(symbolStr) {
+			continue
+		}
+		if kind != nil && symbols.InferKind(symbolStr) != *kind {
+			continue
+		}
+		result, err := rowToResult(db, projectRoot, symbolID, symbolStr, startLine, docPath)
 		if err != nil {
 			return nil, err
 		}
-		kind := symbols.InferKind(sym.Symbol)
-		short := symbols.ExtractLeafName(sym.Symbol)
-		results = append(results, searchResult{filePath, line, kindToDisplay(kind), short})
+		key := resultKey(result)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		results = append(results, result)
+		if len(results) > limit {
+			break
+		}
 	}
-	return results, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return output.LimitAndWarn(results, limit, "results"), nil
+}
+
+func searchResultsFromSymbols(db *sql.DB, projectRoot string, syms []queries.SymbolResult, limit int) ([]searchResult, error) {
+	var results []searchResult
+	seen := make(map[string]bool)
+	for _, sym := range syms {
+		result, err := rowToResult(db, projectRoot, sym.ID, sym.Symbol, sql.NullInt64{}, sql.NullString{})
+		if err != nil {
+			return nil, err
+		}
+		key := resultKey(result)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		results = append(results, result)
+		if len(results) > limit {
+			break
+		}
+	}
+	return output.LimitAndWarn(results, limit, "results"), nil
 }
 
 func qualifiedPattern(pattern string) bool {
@@ -267,71 +321,26 @@ func SearchMain(args map[string]interface{}) error {
 	}
 
 	whereClause := strings.Join(patternClauses, " OR ")
+	query := fmt.Sprintf(`
+		SELECT gs.id, gs.symbol, gs.display_name, der.start_line, d.relative_path
+		FROM global_symbols gs
+		%s
+		WHERE (%s)%s%s
+		%s
+		LIMIT ?
+	`, joinDocs, whereClause, pathClause, kindClause, searchRankSQL())
 
-	var results []searchResult
-	if kind != nil {
-		query := fmt.Sprintf(`
-			SELECT gs.id, gs.symbol, gs.display_name
-			FROM global_symbols gs
-			%s
-			WHERE (%s)%s%s
-		`, joinDocs, whereClause, pathClause, kindClause)
-		params := append(patternParams, pathParams...)
-		rows, err := searchRowsWithKind(db, query, params, *kind, limit)
-		if err != nil {
-			return err
-		}
-		for _, sym := range rows {
-			filePath, line, err := defLocationForSymbol(db, projectRoot, sym)
-			if err != nil {
-				return err
-			}
-			if isNoisySymbol(sym.Symbol) {
-				continue
-			}
-			symKind := symbols.InferKind(sym.Symbol)
-			short := symbols.ExtractLeafName(sym.Symbol)
-			results = append(results, searchResult{filePath, line, kindToDisplay(symKind), short})
-		}
-	} else {
-		fetchLimit := limit*5 + 1
-		if fetchLimit < limit+1 {
-			fetchLimit = limit + 1
-		}
-		query := fmt.Sprintf(`
-			SELECT gs.id, gs.symbol, gs.display_name
-			FROM global_symbols gs
-			%s
-			WHERE (%s)%s
-			LIMIT ?
-		`, joinDocs, whereClause, pathClause)
-		params := append(patternParams, pathParams...)
-		params = append(params, fetchLimit)
-		rows, err := sqlhelp.DebugExecute(db, query, params...)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
+	params := append(patternParams, pathParams...)
+	params = append(params, searchScanLimit(limit))
+	rows, err := sqlhelp.DebugExecute(db, query, params...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 
-		for rows.Next() {
-			var sym queries.SymbolResult
-			if err := rows.Scan(&sym.ID, &sym.Symbol, &sym.DisplayName); err != nil {
-				return err
-			}
-			if isNoisySymbol(sym.Symbol) {
-				continue
-			}
-			filePath, line, err := defLocationForSymbol(db, projectRoot, sym)
-			if err != nil {
-				return err
-			}
-			symKind := symbols.InferKind(sym.Symbol)
-			short := symbols.ExtractLeafName(sym.Symbol)
-			results = append(results, searchResult{filePath, line, kindToDisplay(symKind), short})
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
+	results, err := collectUniqueFromRows(db, projectRoot, rows, limit, kind)
+	if err != nil {
+		return err
 	}
 
 	if len(results) == 0 {
@@ -344,17 +353,14 @@ func SearchMain(args map[string]interface{}) error {
 		return clierr.Exit(1)
 	}
 
-	results = output.LimitAndWarn(results, limit, "results")
-
 	if len(prefill) > 0 {
 		seen := make(map[string]bool)
 		for _, r := range prefill {
-			seen[fmt.Sprintf("%s:%v", r.filePath, r.line)] = true
+			seen[resultKey(r)] = true
 		}
 		var filtered []searchResult
 		for _, r := range results {
-			key := fmt.Sprintf("%s:%v", r.filePath, r.line)
-			if !seen[key] {
+			if !seen[resultKey(r)] {
 				filtered = append(filtered, r)
 			}
 		}

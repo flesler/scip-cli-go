@@ -106,7 +106,7 @@ func ResolvePythonCLI(repoRoot string) (string, error) {
 	if _, err := os.Stat(homeLocal); err == nil {
 		return homeLocal, nil
 	}
-	return "", fmt.Errorf("Python scip-cli not found on PATH or at ../scip-cli/.venv/bin/scip-cli")
+	return "", fmt.Errorf("python scip-cli not found on PATH or at ../scip-cli/.venv/bin/scip-cli")
 }
 
 func CopyDir(src, dst string) error {

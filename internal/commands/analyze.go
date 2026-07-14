@@ -65,12 +65,13 @@ func AnalyzeMain(args map[string]interface{}) error {
 			return err
 		}
 
-		if resolved.Kind == "dir" {
+		switch resolved.Kind {
+		case "dir":
 			secs, err = analyze.RunDirSections(db, resolved.Scope, limit, includeTests, priorities, budget)
 			if err != nil {
 				return err
 			}
-		} else if resolved.Kind == "file" {
+		case "file":
 			fileInclude := projectIncludeTests(includeTests, resolved.Scope)
 			secs, err = analyze.RunProjectSections(db, limit, fileInclude, resolved.Scope, priorities, budget)
 			if err != nil {
@@ -83,7 +84,7 @@ func AnalyzeMain(args map[string]interface{}) error {
 				}
 				secs = append(secs, fileSecs...)
 			}
-		} else {
+		default:
 			sym, err := session.ResolveOneSymbol(db, resolved.SymbolName, nil, pathScope)
 			if err != nil {
 				return err

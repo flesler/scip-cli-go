@@ -2,7 +2,6 @@ package analyze
 
 import (
 	"database/sql"
-	database_sql "database/sql"
 	"fmt"
 	"regexp"
 	"strings"
@@ -72,7 +71,7 @@ func FetchOne(db *sql.DB, query string, args ...interface{}) ([]interface{}, err
 		ptrs[i] = &vals[i]
 	}
 	if err := row.Scan(ptrs...); err != nil {
-		if err == database_sql.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
@@ -88,7 +87,7 @@ func FetchOneRow(db *sql.DB, ncols int, query string, args ...interface{}) ([]in
 		ptrs[i] = &vals[i]
 	}
 	if err := row.Scan(ptrs...); err != nil {
-		if err == database_sql.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err

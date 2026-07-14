@@ -29,11 +29,12 @@ func memberSourcePatterns(memberSymbol, short string, kind symbols.SymbolKind) (
 	}
 
 	var pyPattern string
-	if kind == symbols.KindMethod {
+	switch kind {
+	case symbols.KindMethod:
 		pyPattern = `^\s*(?:async\s+)?def\s+` + regexp.QuoteMeta(short) + `\s*\(`
-	} else if kind == symbols.KindProperty {
+	case symbols.KindProperty:
 		pyPattern = `^\s*` + regexp.QuoteMeta(short) + `\s*[=:]`
-	} else if kind == symbols.KindClass {
+	case symbols.KindClass:
 		pyPattern = `^\s*class\s+` + regexp.QuoteMeta(short) + `\s*[:\(]`
 	}
 

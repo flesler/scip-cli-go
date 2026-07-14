@@ -382,7 +382,11 @@ CLI `--version` string (e.g. `2.3.0`) is independent of module/tag semver; only 
 
 **Lesson**: Before first `v2.0.0` tag, decide: either add `/v2` to module path, or keep tags at v1.x until you do.
 
-## 49. `source scripts/dev-env.sh` hangs for minutes in agent shells
+## 49. `source scripts/dev-env.sh` hangs for minutes in agent shells [L385-394]
+## 50. Pre-commit hook missed golangci-lint v2 incompatibility (2026-07-14) [L394-425]
+ ### Root cause: Version mismatch between local and CI tooling [L396-402]
+ ### Why it happened [L402-415]
+ ### Fix applied [L415-425]
 
 **Symptom**: One-liners like `source dev-env.sh && sed … && make test` sit with no output for 3+ minutes; file edits never run.
 
@@ -391,3 +395,36 @@ CLI `--version` string (e.g. `2.3.0`) is independent of module/tag semver; only 
 **Fix**: Removed auto-`make tools` from `dev-env.sh`. Run `make setup` once for hooks and `./bin` tools.
 
 **Lesson**: `dev-env.sh` sets PATH only (Go SDK + `./bin`). No network, no builds.
+
+## 50. Pre-commit hook missed golangci-lint v2 incompatibility (2026-07-14) [L396-427]
+ ### Root cause: Version mismatch between local and CI tooling [L398-404]
+ The pre-commit hooks call `golangci-lint run` directly from PATH without version validation. Local developers may have:
+ - An older/newer version installed globally
+ - No golangci-lint installed at all
+ - A version that doesn't match what CI pins in `.github/workflows/ci.yml`
+
+ The Makefile's `GOLANGCI_LINT_VERSION` variable only gates the `make tools` target, not every commit. There's no enforcement that the local binary matches CI's expectation.
+ ### Why it happened [L404-417]
+ Go 1.25 was a "minor" version bump (1.24 → 1.25), but golangci-lint v1.64.8 was built with Go 1.24's toolchain. When golangci-lint loads its config, it validates against the Go runtime version it was compiled with. Since our project targets Go 1.25, the linter refused to run, citing an incompatibility.
+
+ This forced us to upgrade from golangci-lint v1.x to v2.x — a full major version jump triggered by what seemed like a harmless minor Go update. The v2 upgrade also required migrating the entire `.golangci.yaml` schema (linters → formatters split, exclusion rules restructuring, array vs string type changes).
+ ### Fix applied [L417-427]
+ **Symptom**: CI fails with `can't load config: the Go language version (go1.24) used to build golangci-lint is lower than the targeted Go version (1.25.0)`.
+
+ **Immediate fix**:
+ 1. Updated `.github/workflows/ci.yml`: Changed `golangci-lint-action@v6` → `@v7` (v2 requires action v7)
+ 2. Updated version from `v1.64.8` → `v2.12.2` in both CI workflow and Makefile
+ 3. Migrated `.golangci.yaml` to v2 schema:
+    - Added `version: "2"` at top
+    - Split `linters-settings` → `linters.settings` + `formatters.settings`
+    - Moved `gofmt`/`goimports` from linters to formatters section
+    - Converted `issues.*` → `linters.exclusions.*`
+    - Fixed `local-prefixes` from string to array format
+ 4. Fixed newly surfaced lint errors:
+    - Removed duplicate `database/sql` import
+    - Converted if-else chains to tagged switches (QF1003)
+    - Lowercased error message capitalization (ST1005)
+
+ **Why pre-commit missed it**: Local hooks run `golangci-lint run` directly from PATH, which may be a different version (or absent). The Makefile's `GOLANGCI_LINT_VERSION` variable only gates `make tools`, not every commit. CI explicitly pins its own version, so the mismatch surfaced only in the workflow.
+
+ **Lesson**: When Go does a minor bump, tooling that embeds or validates the Go runtime often requires a major version upgrade. Pin lint tool versions in both CI and local dev, and treat Go runtime bumps as breaking changes for the toolchain. Consider adding a version check to pre-commit hooks that validates the local binary matches CI's pinned version.

@@ -38,18 +38,18 @@ scip-cli skill   # dump SKILL.md to stdout
 scip-cli <command> [arguments]
 ```
 
-| Command | Purpose |
-|---------|---------|
-| `refs` | Find references to a symbol |
-| `code` | Definition + source snippet |
-| `search` | Search symbols by pattern |
-| `symbols` | List symbols in a file |
-| `rdeps` | Reverse file dependencies |
-| `deps` | Outbound dependencies |
-| `members` | Class/interface members |
-| `analyze` | SQL health dashboards |
-| `reindex` | Force re-index |
-| `skill` | Install or dump SKILL.md |
+|Command|Purpose|
+|---|---|
+|`refs`|Find references to a symbol|
+|`code`|Definition + source snippet|
+|`search`|Search symbols by pattern|
+|`symbols`|List symbols in a file|
+|`rdeps`|Reverse file dependencies|
+|`deps`|Outbound dependencies|
+|`members`|Class/interface members|
+|`analyze`|SQL health dashboards|
+|`reindex`|Force re-index|
+|`skill`|Install or dump SKILL.md|
 
 See `scip-cli skill` or upstream [README](https://github.com/flesler/scip-cli) for pipelines, analyze tiers, and `.scip-cli.json` options.
 
@@ -69,12 +69,12 @@ make sync-upstream  # refresh fixtures/docs from upstream Python repo
 
 Git hooks run on every commit (after `make setup`):
 
-| Hook | Tool |
-|------|------|
-| Format | `gofmt`, `goimports` (auto-fix staged `.go` files) |
-| Typecheck | `go build ./...`, `go vet ./...` |
-| Lint | `golangci-lint` (config: `.golangci.yaml`) |
-| Module hygiene | `go mod tidy` check on `go.mod` / `go.sum` |
+|Hook|Tool|
+|---|---|
+|Format|`gofmt`, `goimports` (auto-fix staged `.go` files)|
+|Typecheck|`go build ./...`, `go vet ./...`|
+|Lint|`golangci-lint` (config: `.golangci.yaml`)|
+|Module hygiene|`go mod tidy` check on `go.mod` / `go.sum`|
 
 All Go tools install to `./bin/` via `make tools` — nothing added to global PATH.
 
@@ -86,12 +86,12 @@ Release: `scripts/publish.sh patch` (or `minor` / `major`) — test, version bum
 
 ### Supported projects
 
-| Language | Markers | Indexer |
-|----------|---------|---------|
-| TypeScript/JS | `package.json`, `tsconfig.json` | `scip-typescript` (via `npx`) |
-| Python | `pyproject.toml`, `setup.py` | `scip-python` (via `npx`) |
-| Go | `go.mod` | `scip-go` (via `go install` → `~/go/bin`) |
-| Rust | `Cargo.toml` | `rust-analyzer` (via `rustup component add`) |
+|Language|Markers|Indexer|
+|---|---|---|
+|TypeScript/JS|`package.json`, `tsconfig.json`|`scip-typescript` (via `npx`)|
+|Python|`pyproject.toml`, `setup.py`|`scip-python` (via `npx`)|
+|Go|`go.mod`|`scip-go` (via `go install` → `~/go/bin`)|
+|Rust|`Cargo.toml`|`rust-analyzer` (via `rustup component add`)|
 
 On first index, missing tools are fetched automatically (`npx` for TS/Python, `go install` for Go, `rustup` for Rust). The `scip` converter auto-downloads from [GitHub releases](https://github.com/scip-code/scip/releases) when absent.
 

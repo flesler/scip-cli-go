@@ -428,3 +428,43 @@ CLI `--version` string (e.g. `2.3.0`) is independent of module/tag semver; only 
  **Why pre-commit missed it**: Local hooks run `golangci-lint run` directly from PATH, which may be a different version (or absent). The Makefile's `GOLANGCI_LINT_VERSION` variable only gates `make tools`, not every commit. CI explicitly pins its own version, so the mismatch surfaced only in the workflow.
 
  **Lesson**: When Go does a minor bump, tooling that embeds or validates the Go runtime often requires a major version upgrade. Pin lint tool versions in both CI and local dev, and treat Go runtime bumps as breaking changes for the toolchain. Consider adding a version check to pre-commit hooks that validates the local binary matches CI's pinned version.
+
+## 51. Repeatable CLI flags — `continue` only exits the inner loop
+
+**Problem**: Custom `flagSet` with `Func` callbacks (repeatable `--exclude`, `--path`, `--check`) used `continue` after handling a func flag. In Go, that continues the `for _, ff := range f.funcs` loop, not the outer `for i < len(argv)` loop — so the arg index never advanced and every other repeated flag was dropped (`--exclude A --exclude B` persisted only `A`).
+
+**Time Lost**: ~20 minutes (dogfood showed 2/3 globs; looked like a product bug until stepping through `Parse`)
+
+**Lesson**: After consuming a flag and incrementing `i`, use a **labeled** `continue parseArgs` on the outer loop, or restructure so func flags don't sit inside a nested `range`. Easy for agents to copy Python/argparse mental models and miss Go's loop-scoped `continue`.
+
+## 52. `sqlExec` interface missing `Query` after postprocess growth
+
+**Problem**: Postprocess helpers used a small `sqlExec` interface (`Exec`, `QueryRow`). Adding `pruneExcludedDocuments` called `db.Query(...)` on that interface → compile error: `db.Query undefined (type sqlExec has no field or method Query)`.
+
+**Time Lost**: ~5 minutes
+
+**Lesson**: When extracting DB helpers behind a minimal interface, any new SQL shape (scan many rows) may need a new method — `*sql.Tx` and `*sql.DB` both satisfy it, but the interface won't grow by itself. Either widen the interface upfront or pass `*sql.Tx` until the API stabilizes.
+
+## 53. `strings.ContainsRune` rejects `byte`
+
+**Problem**: Glob-to-regex helper looped over `normalized` as bytes and called `strings.ContainsRune(".^$+{}|()[]", char)` where `char` is a `byte`. Go rejects: *cannot use char (variable of type byte) as rune value*.
+
+**Time Lost**: ~2 minutes
+
+**Lesson**: Indexing a string yields `byte`; `ContainsRune` wants `rune`. Use `rune(char)` or iterate `for _, r := range normalized`.
+
+## 54. Cross tests: isolated `HOME` breaks subprocess Python imports
+
+**Problem**: `TestMain` builds isolated fixtures with `HOME=<tmpdir>` so SQLite caches don't collide. Subprocess `scip-cli` (Python, `pip install --user`) resolves user site-packages from `$HOME/.local/lib/...`. With fake `HOME`, `import scip_cli` fails → every cross test skipped while `make test-cross` still reported **PASS** (all skips).
+
+**Time Lost**: ~15 minutes (false-green until `-v` showed skip reason)
+
+**Lesson**: When Go integration tests spawn **external** interpreters with overridden `HOME`, also pin `PYTHONUSERBASE` (or `PYTHONPATH`) to the real user's install path. Skipped tests count as pass — run `-v` once after wiring subprocess parity.
+
+## 55. `%q` always double-quotes — not Python's `!r`
+
+**Problem**: Cross test compared stderr for unknown `analyze --check`. Go used `fmt.Errorf("unknown analyze check %q ...", name)` → double quotes; Python uses `!r` → single quotes. Normalized stdout comparison passed; stderr parity failed on quote style alone.
+
+**Time Lost**: ~5 minutes
+
+**Lesson**: For CLI message parity with Python/Ruby-style errors, `%q` is wrong tool — use `'%s'` explicitly. Agents default to `%q` for "quoted string" in Go.

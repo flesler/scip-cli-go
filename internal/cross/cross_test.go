@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ var (
 	indexSkip    string
 	goBinary     string
 	pythonBinary string
+	fixtureSrc   string
 )
 
 func TestMain(m *testing.M) {
@@ -48,7 +50,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	src := filepath.Join(repoRoot, "testdata", "fixtures", "typescript-project")
+	fixtureSrc = filepath.Join(repoRoot, "testdata", "fixtures", "typescript-project")
 
 	// Python-indexed fixture (query parity baseline).
 	pyFixture := filepath.Join(tmp, "py-fixture")
@@ -56,7 +58,7 @@ func TestMain(m *testing.M) {
 	if err := os.MkdirAll(pyHome, 0755); err != nil {
 		os.Exit(1)
 	}
-	if err := cross.CopyDir(src, pyFixture); err != nil {
+	if err := cross.CopyDir(fixtureSrc, pyFixture); err != nil {
 		os.Stderr.WriteString("copy fixture failed: " + err.Error() + "\n")
 		os.Exit(1)
 	}
@@ -78,7 +80,7 @@ func TestMain(m *testing.M) {
 	if err := os.MkdirAll(goHome, 0755); err != nil {
 		os.Exit(1)
 	}
-	if err := cross.CopyDir(src, goFixture); err != nil {
+	if err := cross.CopyDir(fixtureSrc, goFixture); err != nil {
 		os.Stderr.WriteString("copy go fixture failed: " + err.Error() + "\n")
 		os.Exit(1)
 	}
@@ -136,8 +138,17 @@ func compareCLIs(t *testing.T, s *cross.Session, tc compareCase) {
 		if py.Code == 0 || goRes.Code == 0 {
 			t.Fatalf("%s: expected non-zero exit (py=%d go=%d)", tc.name, py.Code, goRes.Code)
 		}
+		if tc.compareStderr {
+			if py.Code != goRes.Code {
+				t.Fatalf("%s: exit code mismatch (py=%d go=%d)", tc.name, py.Code, goRes.Code)
+			}
+			if normalize(py.Stderr) != normalize(goRes.Stderr) {
+				t.Errorf("%s stderr mismatch:\nPython:\n%s\n\nGo:\n%s", tc.name, py.Stderr, goRes.Stderr)
+			}
+		}
 		return
 	}
+
 	if py.Code != 0 {
 		t.Fatalf("%s: Python exit %d stderr=%s", tc.name, py.Code, py.Stderr)
 	}
@@ -164,6 +175,21 @@ func normalize(s string) string {
 		cleaned = append(cleaned, line)
 	}
 	return strings.Join(cleaned, "\n")
+}
+
+var (
+	skillContributorsRe = regexp.MustCompile(`(?m)^\*\*Contributors:\*\*.*$`)
+	skillDogfoodRe      = regexp.MustCompile(`(?m)^\*\*Dogfood loop:\*\*.*$`)
+)
+
+// normalizeSkill strips Go-port overlay diffs that are intentional vs Python scip-cli.
+func normalizeSkill(s string) string {
+	s = normalize(s)
+	s = skillContributorsRe.ReplaceAllString(s, "**Contributors:** <port-specific>")
+	s = strings.ReplaceAll(s, "(`scip_cli`, `src/pkg/`)", "(`<pkg>`, `src/pkg/`)")
+	s = strings.ReplaceAll(s, "(`internal/`, `src/pkg/`)", "(`<pkg>`, `src/pkg/`)")
+	s = skillDogfoodRe.ReplaceAllString(s, "**Dogfood loop:** <port-specific>")
+	return s
 }
 
 var parityCases = []compareCase{
@@ -194,12 +220,14 @@ var parityCases = []compareCase{
 
 	{name: "rdeps_helper", args: []string{"rdeps", cross.HelperFile, "--limit", "10"}, compareStdout: true},
 	{name: "deps_symbol", args: []string{"deps", "useWidget", "--limit", "10"}, compareStdout: true},
-	{name: "deps_short_symbol", args: []string{"deps", "io", "--limit", "5"}, compareStdout: true},
+	{name: "deps_short_symbol", args: []string{"deps", "io", "--limit", "5"}, wantExitNonZero: true},
 	{name: "deps_file", args: []string{"deps", cross.UserFile, "--limit", "10"}, compareStdout: true},
 	{name: "deps_paths_only", args: []string{"deps", cross.UserFile, "--paths-only", "--limit", "10"}, compareStdout: true},
 
 	{name: "analyze_project", args: []string{"analyze", "--limit", "5"}, compareStdout: true},
 	{name: "analyze_priority_high", args: []string{"analyze", "--priority", "high", "--limit", "15"}, compareStdout: true},
+	{name: "analyze_check_cycles", args: []string{"analyze", "--check", "cycles", "--limit", "5"}, compareStdout: true},
+	{name: "analyze_check_dead_files", args: []string{"analyze", "--check", "dead_files", "--limit", "5"}, compareStdout: true},
 	{name: "analyze_file", args: []string{"analyze", cross.HelperFile, "--limit", "10"}, compareStdout: true},
 	{name: "analyze_symbol", args: []string{"analyze", cross.ClassWidget, "--limit", "10"}, compareStdout: true},
 	{name: "analyze_directory", args: []string{"analyze", "src", "--limit", "10"}, compareStdout: true},
@@ -222,11 +250,14 @@ func TestCrossCompare_version(t *testing.T) {
 
 func TestCrossCompare_skill(t *testing.T) {
 	requireCrossIndex(t)
-	compareCLIs(t, pySession, compareCase{
-		name:          "skill",
-		args:          []string{"skill"},
-		compareStdout: true,
-	})
+	py := pySession.RunPython("skill")
+	goRes := pySession.RunGo("skill")
+	if py.Code != 0 || goRes.Code != 0 {
+		t.Fatalf("skill failed py=%d go=%d", py.Code, goRes.Code)
+	}
+	if normalizeSkill(py.Stdout) != normalizeSkill(goRes.Stdout) {
+		t.Errorf("skill stdout mismatch:\nPython:\n%s\n\nGo:\n%s", py.Stdout, goRes.Stdout)
+	}
 }
 
 func TestCrossCompare_pythonIndexed(t *testing.T) {
@@ -321,5 +352,88 @@ func TestCrossCompare_analyze_rejects_path_scope(t *testing.T) {
 		name:            "analyze_rejects_path",
 		args:            []string{"analyze", "--path", "src", "--limit", "5"},
 		wantExitNonZero: true,
+	})
+}
+
+func TestCrossCompare_analyze_unknown_check(t *testing.T) {
+	requireCrossIndex(t)
+	compareCLIs(t, pySession, compareCase{
+		name:            "analyze_unknown_check",
+		args:            []string{"analyze", "--check", "not_a_check"},
+		wantExitNonZero: true,
+		compareStderr:   true,
+	})
+}
+
+func TestCrossCompare_reindex_exclude_globs(t *testing.T) {
+	requireCrossIndex(t)
+
+	excludeArgs := []string{
+		"reindex",
+		"--exclude", cross.DefaultExcludeGlob1,
+		"--exclude", cross.DefaultExcludeGlob2,
+		"--exclude", cross.DefaultExcludeGlob3,
+	}
+
+	pyExcludeFixture := filepath.Join(filepath.Dir(pySession.FixtureDir), "exclude-py")
+	pyExcludeHome := filepath.Join(filepath.Dir(pySession.HomeDir), "exclude-py-home")
+	goExcludeFixture := filepath.Join(filepath.Dir(goSession.FixtureDir), "exclude-go")
+	goExcludeHome := filepath.Join(filepath.Dir(goSession.HomeDir), "exclude-go-home")
+
+	setupExcludeSession := func(fixtureDir, homeDir string) (*cross.Session, error) {
+		if err := os.RemoveAll(fixtureDir); err != nil {
+			return nil, err
+		}
+		if err := os.MkdirAll(homeDir, 0755); err != nil {
+			return nil, err
+		}
+		if err := cross.CopyDir(fixtureSrc, fixtureDir); err != nil {
+			return nil, err
+		}
+		return &cross.Session{
+			FixtureDir:   fixtureDir,
+			HomeDir:      homeDir,
+			PythonBinary: pythonBinary,
+			GoBinary:     goBinary,
+		}, nil
+	}
+
+	pySess, err := setupExcludeSession(pyExcludeFixture, pyExcludeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	goSess, err := setupExcludeSession(goExcludeFixture, goExcludeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pyReindex := pySess.RunPython(excludeArgs...)
+	if pyReindex.Code != 0 {
+		t.Fatalf("Python exclude reindex: exit %d stderr=%s", pyReindex.Code, pyReindex.Stderr)
+	}
+	goReindex := goSess.RunGo(excludeArgs...)
+	if goReindex.Code != 0 {
+		t.Fatalf("Go exclude reindex: exit %d stderr=%s", goReindex.Code, goReindex.Stderr)
+	}
+
+	compareCLIs(t, pySess, compareCase{
+		name:          "symbols_after_exclude",
+		args:          []string{"symbols", cross.HelperFile, "--limit", "10"},
+		compareStdout: true,
+	})
+
+	pySearch := pySess.RunPython("search", cross.FnFixtureOnlyHelper, "--limit", "5")
+	goSearch := goSess.RunGo("search", cross.FnFixtureOnlyHelper, "--limit", "5")
+	if pySearch.Code == 0 || goSearch.Code == 0 {
+		t.Fatalf("expected search miss after exclude (py=%d go=%d)", pySearch.Code, goSearch.Code)
+	}
+	if pySearch.Code != goSearch.Code {
+		t.Fatalf("search exit mismatch after exclude (py=%d go=%d)", pySearch.Code, goSearch.Code)
+	}
+
+	compareCLIs(t, goSess, compareCase{
+		name:          "symbols_after_exclude_go_index",
+		args:          []string{"symbols", cross.HelperFile, "--limit", "10"},
+		compareStdout: true,
 	})
 }

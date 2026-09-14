@@ -714,7 +714,7 @@ func ParseChecks(values []string) (map[string]bool, error) {
 					allowed = append(allowed, k)
 				}
 				sort.Strings(allowed)
-				return nil, fmt.Errorf("unknown analyze check %q (use %s)", part, strings.Join(allowed, ", "))
+				return nil, fmt.Errorf("unknown analyze check '%s' (use %s)", part, strings.Join(allowed, ", "))
 			}
 			result[key] = true
 		}

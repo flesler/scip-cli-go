@@ -10,17 +10,21 @@ import (
 )
 
 const (
-	HelperFile   = "src/helper.ts"
-	WidgetFile   = "src/widget.ts"
-	UserFile     = "src/user.ts"
-	ConsumerFile = "src/consumer.ts"
-	FnGreet      = "greet"
-	TypeOptions  = "Options"
-	FieldVerbose = "verbose"
-	MethodRun    = "Widget.run"
-	ClassWidget  = "Widget"
-	ClassHandler = "Handler"
-	TypeOpts     = "Opts"
+	HelperFile          = "src/helper.ts"
+	WidgetFile          = "src/widget.ts"
+	UserFile            = "src/user.ts"
+	ConsumerFile        = "src/consumer.ts"
+	FnGreet             = "greet"
+	FnFixtureOnlyHelper = "fixtureOnlyHelper"
+	TypeOptions         = "Options"
+	FieldVerbose        = "verbose"
+	MethodRun           = "Widget.run"
+	ClassWidget         = "Widget"
+	ClassHandler        = "Handler"
+	TypeOpts            = "Opts"
+	DefaultExcludeGlob1 = "**/__tests__/**"
+	DefaultExcludeGlob2 = "**/*.spec.ts"
+	DefaultExcludeGlob3 = "**/*.test.ts"
 )
 
 // Session runs Python and Go CLIs against one indexed fixture with an isolated cache (HOME).
@@ -34,12 +38,18 @@ type Session struct {
 func (s *Session) Env() []string {
 	var env []string
 	for _, e := range os.Environ() {
-		if strings.HasPrefix(e, "SCIP_CLI_CACHE=") || strings.HasPrefix(e, "HOME=") {
+		if strings.HasPrefix(e, "SCIP_CLI_CACHE=") ||
+			strings.HasPrefix(e, "HOME=") ||
+			strings.HasPrefix(e, "PYTHONUSERBASE=") {
 			continue
 		}
 		env = append(env, e)
 	}
 	env = append(env, "HOME="+s.HomeDir)
+	// pip --user installs live under the real user's ~/.local; isolated HOME must not hide them.
+	if realHome, err := os.UserHomeDir(); err == nil {
+		env = append(env, "PYTHONUSERBASE="+filepath.Join(realHome, ".local"))
+	}
 	return env
 }
 

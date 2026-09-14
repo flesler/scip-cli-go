@@ -4,7 +4,7 @@
 
 Go implementation of [scip-cli](https://github.com/flesler/scip-cli) — fast code intelligence via SCIP indexes for TypeScript/JavaScript, Python, Go, and Rust.
 
-Feature and CLI output parity with upstream **scip-cli 2.5.0** (Python reference). Cross-language integration tests compare stdout/stderr/exit codes against `scip-cli` on PATH.
+Feature and CLI output parity with upstream **scip-cli 2.8.0** (Python reference). Cross-language integration tests compare stdout/stderr/exit codes against `scip-cli` on PATH.
 
 ## Why
 
@@ -14,10 +14,10 @@ AI agents waste tokens on grep and file scanning. scip-cli gives precise, type-a
 
 ```bash
 go install github.com/flesler/scip-cli-go/v2/cmd/scip-cli@latest
-scip-cli --version   # must show 2.5.0
+scip-cli --version   # must show 2.8.0
 ```
 
-(`@latest` → current release. Pin with `@v2.5.0` if you need an exact version.)
+(`@latest` → current release. Pin with `@v2.8.0` if you need an exact version.)
 
 The installed binary is `scip-cli` — rename or symlink to `scip-cli-go` so you do **not** shadow Python `scip-cli` on PATH.
 

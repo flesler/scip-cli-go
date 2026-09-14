@@ -160,9 +160,11 @@ Directory detection uses the filesystem when present, otherwise an indexed path 
 ### reindex
 
 ```bash
-reindex [--path DIR ...] [--tsconfig FILE_OR_GLOB ...] [--exclude GLOB ...] [--with-external]
+reindex [--path DIR ...] [--tsconfig FILE_OR_GLOB ...] [--exclude [GLOB ...]] [--fresh] [--with-external]
 ```
 
-`--path` and `--tsconfig` cannot be combined (**TypeScript only**). `--tsconfig` takes `tsconfig*.json` files (repeatable; globs expanded inside the tool). File-based runs default to one `scip-typescript` process per file so each gets its own heap (`SCIP_CLI_TS_INDEX_BATCH_SIZE` still overrides). Scope is saved as `index-scope.json` and reused until a full `reindex` with neither flag.
+`--path` and `--tsconfig` cannot be combined (**TypeScript only**). `--tsconfig` takes `tsconfig*.json` files (repeatable; globs expanded inside the tool). File-based runs default to one `scip-typescript` process per file so each gets its own heap (`SCIP_CLI_TS_INDEX_BATCH_SIZE` still overrides). Scope and exclude defaults are persisted in `metadata.json` next to `index.db` and reused on later `reindex` runs.
 
-`--exclude GLOB` omits matching files from the SQLite index after conversion (repeatable; merged with `excludeGlobs` in `.scip-cli.json`). Persisted in `index-exclude.json` until a full `reindex` with no `--exclude`. Patterns without `/` match basenames (`*.test.ts`); patterns with `/` match repo-relative paths (`tests/**`, `**/__tests__/**`). Indexers still parse excluded files when production code imports them — post-process removal is authoritative.
+`--exclude GLOB` omits matching files from the SQLite index after conversion (repeatable; merged with `excludeGlobs` in `.scip-cli.json`). Passing `--exclude` updates the persisted exclude list; bare `--exclude` clears it. Patterns without `/` match basenames (`*.test.ts`); patterns with `/` match repo-relative paths (`tests/**`, `**/__tests__/**`). Indexers still parse excluded files when production code imports them — post-process removal is authoritative.
+
+`--fresh` ignores `metadata.json` for this run and clears it afterward unless `--path`, `--tsconfig`, or `--exclude` are set on the same command (use `reindex --fresh` to restore a full index).

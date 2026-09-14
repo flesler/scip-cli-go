@@ -1,63 +1,29 @@
 package exclude
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/flesler/scip-cli-go/v2/internal/cache"
 	"github.com/flesler/scip-cli-go/v2/internal/config"
+	"github.com/flesler/scip-cli-go/v2/internal/metadata"
 )
 
-const ExcludeFilename = "index-exclude.json"
-
-func excludePath(projectRoot string) string {
-	return filepath.Join(cache.GetCacheDir(projectRoot), ExcludeFilename)
-}
-
 func LoadPersistedExcludeGlobs(projectRoot string) []string {
-	path := excludePath(projectRoot)
-	data, err := os.ReadFile(path)
-	if err != nil {
+	meta := metadata.LoadMetadata(projectRoot)
+	if len(meta.ExcludeGlobs) == 0 {
 		return nil
 	}
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil
-	}
-	globs, ok := raw["globs"].([]interface{})
-	if !ok || len(globs) == 0 {
-		return nil
-	}
-	var out []string
-	for _, g := range globs {
-		if s, ok := g.(string); ok && s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
+	return meta.ExcludeGlobs
 }
 
 func SavePersistedExcludeGlobs(projectRoot string, globs []string) error {
-	path := excludePath(projectRoot)
-	if len(globs) == 0 {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-	payload := map[string][]string{"globs": globs}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0644)
+	current := metadata.LoadMetadata(projectRoot)
+	return metadata.SaveMetadata(projectRoot, metadata.IndexMetadata{
+		ScopePaths:   current.ScopePaths,
+		ExcludeGlobs: globs,
+	})
 }
 
 func ResolveExcludeGlobs(projectRoot string) ([]string, error) {

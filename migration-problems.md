@@ -468,3 +468,11 @@ CLI `--version` string (e.g. `2.3.0`) is independent of module/tag semver; only 
 **Time Lost**: ~5 minutes
 
 **Lesson**: For CLI message parity with Python/Ruby-style errors, `%q` is wrong tool — use `'%s'` explicitly. Agents default to `%q` for "quoted string" in Go.
+
+## 56. v2.9.0 `metadata.json` port — bare `--exclude` and e2e scope paths
+
+**Problem**: Python `argparse` `nargs="*"` on `--exclude` allows bare `--exclude` (clears persisted globs). Go's custom `flagSet` treats every `Func` flag as requiring a value — needed a pre-pass (`parseExcludeGroups`) before the main flag parse. E2e `TestReindexPreservesScope` used scope `"src"` but single-package fixtures discover project `"."` — bare reindex failed with *no TypeScript projects found under index scope*.
+
+**Time Lost**: ~20 minutes
+
+**Lesson**: Ports of `nargs=*` / optional-arg flags need explicit argv splitting in Go; e2e scope tests must use paths that match `discover.DiscoverProjects` output (`.` for root tsconfig, not `src/`).

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/flesler/scip-cli-go/v2/internal/cache"
+	"github.com/flesler/scip-cli-go/v2/internal/metadata"
 )
 
 func withTestCache(t *testing.T, dir string) func() {
@@ -70,7 +70,7 @@ func TestSavePersistedExcludeGlobsClears(t *testing.T) {
 	if err := SavePersistedExcludeGlobs(dir, []string{"tests/**"}); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(cache.GetCacheDir(dir), ExcludeFilename)
+	path := metadata.MetadataPath(dir)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestSavePersistedExcludeGlobsClears(t *testing.T) {
 func TestLoadPersistedExcludeGlobsInvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	withTestCache(t, dir)
-	path := filepath.Join(cache.GetCacheDir(dir), ExcludeFilename)
+	path := metadata.MetadataPath(dir)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -103,15 +103,15 @@ func TestSavePersistedExcludeGlobsWritesJSON(t *testing.T) {
 	if err := SavePersistedExcludeGlobs(dir, []string{"tests/**"}); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(cache.GetCacheDir(dir), ExcludeFilename))
+	data, err := os.ReadFile(metadata.MetadataPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var parsed map[string][]string
+	var parsed map[string]map[string][]string
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if len(parsed["globs"]) != 1 || parsed["globs"][0] != "tests/**" {
+	if len(parsed["exclude"]["globs"]) != 1 || parsed["exclude"]["globs"][0] != "tests/**" {
 		t.Fatalf("parsed=%v", parsed)
 	}
 }

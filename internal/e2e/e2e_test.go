@@ -465,9 +465,9 @@ func TestMissingSymbol(t *testing.T) {
 	}
 }
 
-func TestReindexFullClearsScope(t *testing.T) {
+func TestReindexPreservesScope(t *testing.T) {
 	requireIndex(t)
-	if err := scope.SaveIndexScope(fixtureRoot, []string{"src"}); err != nil {
+	if err := scope.SaveIndexScope(fixtureRoot, []string{"."}); err != nil {
 		t.Fatal(err)
 	}
 	if scope.LoadIndexScope(fixtureRoot) == nil {
@@ -477,8 +477,23 @@ func TestReindexFullClearsScope(t *testing.T) {
 	if res.Code != 0 {
 		t.Fatalf("exit %d stderr=%s", res.Code, res.Stderr)
 	}
+	loaded := scope.LoadIndexScope(fixtureRoot)
+	if loaded == nil || len(loaded.Paths) != 1 || loaded.Paths[0] != "." {
+		t.Fatalf("bare reindex should preserve scope: %v", loaded)
+	}
+}
+
+func TestFreshReindexClearsScope(t *testing.T) {
+	requireIndex(t)
+	if err := scope.SaveIndexScope(fixtureRoot, []string{"."}); err != nil {
+		t.Fatal(err)
+	}
+	res := runCLI("reindex", "--fresh")
+	if res.Code != 0 {
+		t.Fatalf("exit %d stderr=%s", res.Code, res.Stderr)
+	}
 	if scope.LoadIndexScope(fixtureRoot) != nil {
-		t.Fatal("full reindex should clear scope")
+		t.Fatal("fresh reindex should clear scope")
 	}
 }
 

@@ -1,71 +1,30 @@
 package scope
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/flesler/scip-cli-go/v2/internal/cache"
+	"github.com/flesler/scip-cli-go/v2/internal/metadata"
 )
 
-const ScopeFilename = "index-scope.json"
-
 type IndexScope struct {
-	Paths []string `json:"paths"`
-}
-
-func scopePath(projectRoot string) string {
-	return filepath.Join(cache.GetCacheDir(projectRoot), ScopeFilename)
+	Paths []string
 }
 
 func LoadIndexScope(projectRoot string) *IndexScope {
-	path := scopePath(projectRoot)
-	data, err := os.ReadFile(path)
-	if err != nil {
+	meta := metadata.LoadMetadata(projectRoot)
+	if len(meta.ScopePaths) == 0 {
 		return nil
 	}
-
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil
-	}
-
-	pathsRaw, ok := raw["paths"].([]interface{})
-	if !ok || len(pathsRaw) == 0 {
-		return nil
-	}
-
-	var paths []string
-	for _, p := range pathsRaw {
-		if s, ok := p.(string); ok {
-			paths = append(paths, s)
-		} else {
-			return nil
-		}
-	}
-
-	return &IndexScope{Paths: paths}
+	return &IndexScope{Paths: meta.ScopePaths}
 }
 
 func SaveIndexScope(projectRoot string, paths []string) error {
-	path := scopePath(projectRoot)
-	if len(paths) == 0 {
-		_ = os.Remove(path)
-		return nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-
-	data := map[string]interface{}{"paths": paths}
-	jsonData, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(path, append(jsonData, '\n'), 0644)
+	current := metadata.LoadMetadata(projectRoot)
+	return metadata.SaveMetadata(projectRoot, metadata.IndexMetadata{
+		ScopePaths:   paths,
+		ExcludeGlobs: current.ExcludeGlobs,
+	})
 }
 
 func ProjectInScope(project string, scopePaths []string) bool {

@@ -13,7 +13,7 @@ import (
 	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
-const version = "2.8.0"
+const version = "2.9.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -295,26 +295,83 @@ func runAnalyze(argv []string) error {
 }
 
 func runReindex(argv []string) error {
+	excludeGroups, rest, err := parseExcludeGroups(argv)
+	if err != nil {
+		return err
+	}
+
 	fs := newFlagSet("reindex")
 	var pathArgs []string
-	fs.Func("path", "index only tsconfig projects under PATH", func(s string) error {
+	fs.Func("path", "index only tsconfig projects under PATH (persisted in metadata.json)", func(s string) error {
 		pathArgs = append(pathArgs, s)
 		return nil
 	})
+	fresh := fs.Bool("fresh", false, "ignore persisted metadata.json; clear it unless scope/exclude flags are set on this run")
 	withExternal := fs.Bool("with-external", false, "keep external library symbols without definitions (increases index size ~5x)")
-	var excludeArgs []string
-	fs.Func("exclude", "omit matching files from the index after conversion (repeatable)", func(s string) error {
-		excludeArgs = append(excludeArgs, s)
-		return nil
-	})
-	if err := fs.Parse(argv); err != nil {
+	if err := fs.Parse(rest); err != nil {
 		return err
 	}
+
+	excludeArgs := flattenExcludeGroups(excludeGroups)
 	return commands.ReindexMain(map[string]interface{}{
 		"path":          pathArgs,
 		"exclude":       excludeArgs,
+		"exclude_set":   excludeGroups != nil,
+		"fresh":         *fresh,
 		"with_external": *withExternal,
 	})
+}
+
+func parseExcludeGroups(argv []string) ([][]string, []string, error) {
+	if len(argv) == 0 {
+		return nil, argv, nil
+	}
+
+	var groups [][]string
+	var rest []string
+	seen := false
+	i := 0
+	for i < len(argv) {
+		arg := argv[i]
+		if arg == "--exclude" || strings.HasPrefix(arg, "--exclude=") {
+			seen = true
+			if strings.HasPrefix(arg, "--exclude=") {
+				val := arg[len("--exclude="):]
+				if val == "" {
+					groups = append(groups, []string{})
+				} else {
+					groups = append(groups, []string{val})
+				}
+				i++
+				continue
+			}
+			var group []string
+			i++
+			for i < len(argv) && !strings.HasPrefix(argv[i], "-") {
+				group = append(group, argv[i])
+				i++
+			}
+			groups = append(groups, group)
+			continue
+		}
+		rest = append(rest, arg)
+		i++
+	}
+	if !seen {
+		return nil, argv, nil
+	}
+	return groups, rest, nil
+}
+
+func flattenExcludeGroups(groups [][]string) []string {
+	if groups == nil {
+		return nil
+	}
+	var out []string
+	for _, group := range groups {
+		out = append(out, group...)
+	}
+	return out
 }
 
 func newFlagSet(name string) *flagSet {

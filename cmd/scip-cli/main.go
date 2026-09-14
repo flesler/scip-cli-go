@@ -13,7 +13,7 @@ import (
 	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
-const version = "2.9.0"
+const version = "2.9.1"
 
 func main() {
 	if len(os.Args) < 2 {

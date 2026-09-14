@@ -100,7 +100,7 @@ func unreferencedInFile(db *sql.DB, relativePath string, limit int) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	rows, err := fetchAllRows(db, `
+	sql := `
 		SELECT gs.symbol, der.start_line, der.end_line, def_d.id
 		FROM global_symbols gs
 		JOIN defn_enclosing_ranges der ON gs.id = der.symbol_id
@@ -116,26 +116,22 @@ func unreferencedInFile(db *sql.DB, relativePath string, limit int) ([]string, e
 		      WHERE m.symbol_id = gs.id AND m.role != 1 AND c.document_id != def_d.id
 		  )
 		ORDER BY der.start_line
-		LIMIT ?
-	`, relativePath, limit)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	for _, r := range rows {
+	`
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, sql+" LIMIT ? OFFSET ?", relativePath, pageSize, offset)
+	}, func(r []interface{}) string {
 		symbol := toStr(r[0])
 		start := toInt(r[1])
 		end := toInt(r[2])
 		defDocID := toInt(r[3])
 		if AnalyzeNoise(relativePath, symbol, true) {
-			continue
+			return ""
 		}
 		if live.DeadExportNoise(symbol, defDocID) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  %d:%d", ShortName(symbol), start+1, end+1))
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  %d:%d", ShortName(symbol), start+1, end+1)
+	}, 0, 0)
 }
 
 func sameFileOnlyInFile(db *sql.DB, relativePath string, limit int) ([]string, error) {
@@ -143,7 +139,7 @@ func sameFileOnlyInFile(db *sql.DB, relativePath string, limit int) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	rows, err := fetchAllRows(db, `
+	sql := `
 		SELECT gs.symbol, der.start_line, der.end_line, def_d.id
 		FROM global_symbols gs
 		JOIN defn_enclosing_ranges der ON gs.id = der.symbol_id
@@ -160,29 +156,25 @@ func sameFileOnlyInFile(db *sql.DB, relativePath string, limit int) ([]string, e
 		      WHERE m.symbol_id = gs.id AND m.role = 0 AND c.document_id != def_d.id
 		  )
 		ORDER BY der.start_line
-		LIMIT ?
-	`, relativePath, limit)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	for _, r := range rows {
+	`
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, sql+" LIMIT ? OFFSET ?", relativePath, pageSize, offset)
+	}, func(r []interface{}) string {
 		symbol := toStr(r[0])
 		start := toInt(r[1])
 		end := toInt(r[2])
 		defDocID := toInt(r[3])
 		if AnalyzeNoise(relativePath, symbol, true) {
-			continue
+			return ""
 		}
 		if live.SameFileExportNoise(symbol, defDocID) {
-			continue
+			return ""
 		}
 		if !FileHasSCIPImporters(db, relativePath, live, defDocID) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  %d:%d", ShortName(symbol), start+1, end+1))
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  %d:%d", ShortName(symbol), start+1, end+1)
+	}, 0, 0)
 }
 
 func deadInFile(db *sql.DB, relativePath string, limit int) ([]string, error) {
@@ -190,7 +182,7 @@ func deadInFile(db *sql.DB, relativePath string, limit int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := fetchAllRows(db, `
+	sql := `
 		SELECT gs.id, gs.symbol, der.start_line, der.end_line, def_d.id
 		FROM global_symbols gs
 		JOIN defn_enclosing_ranges der ON gs.id = der.symbol_id
@@ -205,30 +197,26 @@ func deadInFile(db *sql.DB, relativePath string, limit int) ([]string, error) {
 		        AND c.document_id != def_d.id
 		  )
 		ORDER BY der.start_line
-		LIMIT ?
-	`, relativePath, limit)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	for _, r := range rows {
+	`
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, sql+" LIMIT ? OFFSET ?", relativePath, pageSize, offset)
+	}, func(r []interface{}) string {
 		symID := toInt(r[0])
 		symbol := toStr(r[1])
 		start := toInt(r[2])
 		end := toInt(r[3])
 		defDocID := toInt(r[4])
 		if AnalyzeNoise(relativePath, symbol, true) {
-			continue
+			return ""
 		}
 		if HasSameFileReferenceUsage(db, symID, defDocID) {
-			continue
+			return ""
 		}
 		if live.DeadExportNoise(symbol, defDocID) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  %d:%d", ShortName(symbol), start+1, end+1))
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  %d:%d", ShortName(symbol), start+1, end+1)
+	}, 0, 0)
 }
 
 func importsSummary(db *sql.DB, relativePath string, limit int) ([]string, error) {
@@ -355,7 +343,7 @@ func bindPath(fn fileCheckFn, path string) CheckFunc {
 func fileChecks(relativePath string, includeTopSymbols bool) []Check {
 	title := fmt.Sprintf("(%s)", relativePath)
 	checks := []Check{
-		{"unreferenced_in_file", PriorityHigh, fmt.Sprintf("Unreferenced in file %s", title), bindPath(unreferencedInFile, relativePath), ""},
+		{"unreferenced", PriorityHigh, fmt.Sprintf("Unreferenced in file %s", title), bindPath(unreferencedInFile, relativePath), falsePositivePrefaces["unreferenced_in_file"]},
 		{"dead_in_file", PriorityHigh, fmt.Sprintf("Dead exports in file %s", title), bindPath(deadInFile, relativePath), ""},
 		{"unused_imports", PriorityHigh, fmt.Sprintf("Unused imports %s", title), bindPath(unusedImportsForFile, relativePath), ""},
 		{"same_file_only", PriorityMedium, fmt.Sprintf("Same-file only %s", title), bindPath(sameFileOnlyInFile, relativePath), ""},

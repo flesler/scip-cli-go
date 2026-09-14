@@ -320,6 +320,39 @@ func (li *LiveIndex) StaleTypeLiveNoise(symbol string, defDocID int) bool {
 	return li.LiveModuleDocs[defDocID]
 }
 
+func IsLowSignalDeadFile(db *sql.DB, documentID int) bool {
+	rows, err := fetchAllRows(db, `
+		SELECT gs.symbol
+		FROM defn_enclosing_ranges der
+		JOIN global_symbols gs ON gs.id = der.symbol_id
+		WHERE der.document_id = ?
+	`, documentID)
+	if err != nil || len(rows) == 0 {
+		return false
+	}
+	for _, r := range rows {
+		symbol := toStr(r[0])
+		if symbols.IsModuleSymbol(symbol) || symbols.IsTypeOrInterfaceSymbol(symbol) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func HasSameFileUsageMention(db *sql.DB, symbolID, defDocID int) bool {
+	row, err := fetchOneRow(db, `
+		SELECT 1 FROM mentions m
+		JOIN chunks c ON m.chunk_id = c.id
+		WHERE m.symbol_id = ? AND c.document_id = ? AND m.role != 1
+		LIMIT 1
+	`, symbolID, defDocID)
+	if err != nil {
+		return false
+	}
+	return row != nil
+}
+
 func HasSameFileReferenceUsage(db *sql.DB, symbolID, defDocID int) bool {
 	row, err := fetchOneRow(db, `
 		SELECT 1 FROM mentions m

@@ -12,6 +12,141 @@ import (
 
 const DefaultLimit = 20
 
+// Cap rows scanned when post-filtering SQL (filters drop many SCIP false hits).
+const AnalyzeMaxScanRows = 10_000
+
+// CollectUntilLimit fetches SQL pages until limit rows pass accept, or data is exhausted.
+// Use only when a check post-filters SQL rows; checks that format every row as-is should use LIMIT ? only.
+func CollectUntilLimit(
+	limit int,
+	fetchPage func(pageSize, offset int) ([][]interface{}, error),
+	accept func(row []interface{}) string,
+	pageSize int,
+	maxScan int,
+) ([]string, error) {
+	if pageSize <= 0 {
+		if limit > 50 {
+			pageSize = limit
+		} else {
+			pageSize = 50
+		}
+	}
+	if maxScan <= 0 {
+		maxScan = AnalyzeMaxScanRows
+	}
+
+	var lines []string
+	offset := 0
+	scanned := 0
+	for len(lines) < limit {
+		rows, err := fetchPage(pageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			scanned++
+			if scanned > maxScan {
+				return lines, nil
+			}
+			line := accept(row)
+			if line == "" {
+				continue
+			}
+			lines = append(lines, line)
+			if len(lines) >= limit {
+				return lines, nil
+			}
+		}
+		if len(rows) < pageSize {
+			break
+		}
+		offset += len(rows)
+	}
+	return lines, nil
+}
+
+// CollectFromProducer fills limit rows from a capped producer that can return more candidates on retry.
+func CollectFromProducer(
+	limit int,
+	produce func(cap int) ([]string, error),
+	accept func(candidate string) string,
+	maxScan int,
+) ([]string, error) {
+	if maxScan <= 0 {
+		maxScan = AnalyzeMaxScanRows
+	}
+
+	var lines []string
+	seen := make(map[string]bool)
+	scanned := 0
+	fetchCap := limit
+	for len(lines) < limit && fetchCap <= maxScan {
+		candidates, err := produce(fetchCap)
+		if err != nil {
+			return nil, err
+		}
+		if len(candidates) == 0 {
+			break
+		}
+		for _, candidate := range candidates {
+			if seen[candidate] {
+				continue
+			}
+			seen[candidate] = true
+			scanned++
+			if scanned > maxScan {
+				return lines, nil
+			}
+			line := accept(candidate)
+			if line == "" {
+				continue
+			}
+			lines = append(lines, line)
+			if len(lines) >= limit {
+				return lines, nil
+			}
+		}
+		if len(candidates) < fetchCap {
+			break
+		}
+		fetchCap += limit
+	}
+	return lines, nil
+}
+
+// CollectFromIterable filters an in-memory candidate list until limit rows pass accept.
+func CollectFromIterable(
+	limit int,
+	candidates []string,
+	accept func(candidate string) string,
+	maxScan int,
+) []string {
+	if maxScan <= 0 {
+		maxScan = AnalyzeMaxScanRows
+	}
+
+	var lines []string
+	scanned := 0
+	for _, candidate := range candidates {
+		scanned++
+		if scanned > maxScan {
+			break
+		}
+		line := accept(candidate)
+		if line == "" {
+			continue
+		}
+		lines = append(lines, line)
+		if len(lines) >= limit {
+			break
+		}
+	}
+	return lines
+}
+
 const SymDefJoin = `
     JOIN defn_enclosing_ranges sym_def ON sym_def.symbol_id = gs.id
     JOIN documents def_d ON sym_def.document_id = def_d.id
@@ -127,7 +262,20 @@ func IsTestPath(relativePath string) bool {
 	if idx := strings.LastIndex(name, "/"); idx >= 0 {
 		name = name[idx+1:]
 	}
-	if strings.Contains(name, ".test.") || strings.Contains(name, ".spec.") {
+	if strings.Contains(name, ".test.") || strings.Contains(name, ".spec.") || strings.Contains(name, ".mocha.") {
+		return true
+	}
+	stem := name
+	if dot := strings.LastIndex(name, "."); dot >= 0 {
+		stem = name[:dot]
+	}
+	if strings.HasSuffix(stem, "_test") || strings.HasSuffix(stem, "_spec") {
+		return true
+	}
+	if strings.Contains(name, "test-fixture") || strings.Contains(name, "test_fixture") || strings.Contains(name, "test-mocks") {
+		return true
+	}
+	if strings.Contains(lower, "/__fixtures__/") || strings.Contains(lower, "/__mocks__/") {
 		return true
 	}
 	if strings.HasPrefix(name, "test_") && strings.HasSuffix(name, ".py") {
@@ -136,33 +284,33 @@ func IsTestPath(relativePath string) bool {
 	return name == "conftest.py"
 }
 
-func isCLIEntrypoint(relativePath, symbol string) bool {
+func IsDynamicLoaderPath(relativePath string) bool {
+	p := strings.ReplaceAll(relativePath, "\\", "/")
+	return strings.Contains(strings.ToLower(p), "/migrations/")
+}
+
+func isPythonMainEntrypoint(relativePath, symbol string) bool {
 	if ShortName(symbol) != "main" {
 		return false
 	}
-	path := strings.ReplaceAll(relativePath, "\\", "/")
-	return path == "scip_cli/__main__.py" || strings.Contains(path, "/commands/")
-}
-
-func isGeneratedAnalyzePath(relativePath string) bool {
-	p := strings.ReplaceAll(relativePath, "\\", "/")
-	if strings.Contains(p, "/types/prisma/") {
-		return true
-	}
-	return strings.HasSuffix(p, "types/resolvers.ts")
+	return strings.HasSuffix(strings.ReplaceAll(relativePath, "\\", "/"), "__main__.py")
 }
 
 func AnalyzeNoise(relativePath, symbol string, includeTests bool) bool {
 	if !includeTests && IsTestPath(relativePath) {
 		return true
 	}
-	if isGeneratedAnalyzePath(relativePath) {
-		return true
-	}
 	if strings.HasPrefix(ShortName(symbol), "_") {
 		return true
 	}
-	if isCLIEntrypoint(relativePath, symbol) {
+	if isPythonMainEntrypoint(relativePath, symbol) {
+		return true
+	}
+	if IsDynamicLoaderPath(relativePath) {
+		return true
+	}
+	name := ShortName(symbol)
+	if name == "<constructor>" || name == "constructor" {
 		return true
 	}
 	return isAnalyzeDashboardExport(relativePath, symbol)

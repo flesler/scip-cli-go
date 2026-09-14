@@ -177,33 +177,23 @@ func bottlenecks(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		JOIN fan_out fo ON fo.symbol_id = gs.id
 		WHERE fi.fan_in >= 1 AND fo.fan_out >= 1%s
 		ORDER BY score DESC, fi.fan_in DESC
-		LIMIT ?
 	`, SymDefJoin, SymDefJoin, scopeClause)
 
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var lines []string
-	for _, r := range rows {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, query+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		symbol := toStr(r[0])
 		path := toStr(r[1])
 		fanIn := toInt(r[2])
 		fanOut := toInt(r[3])
 		loc := toInt(r[4])
 		score := toInt(r[5])
-
 		if AnalyzeNoise(path, symbol, opts.IncludeTests) || symbols.IsModuleSymbol(symbol) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  score=%d  loc=%d  fan_in=%d  fan_out=%d  (%s)",
-			ShortName(symbol), score, loc, fanIn, fanOut, path))
-		if len(lines) >= limit {
-			break
-		}
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  score=%d  loc=%d  fan_in=%d  fan_out=%d  (%s)",
+			ShortName(symbol), score, loc, fanIn, fanOut, path)
+	}, 0, 0)
 }
 
 func hotspots(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -224,36 +214,34 @@ func hotspots(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		WHERE m.role != 1%s
 		GROUP BY gs.id
 		ORDER BY ref_count DESC
-		LIMIT ?
 	`, SymDefJoin, scopeClause)
 
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var lines []string
-	for _, r := range rows {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, query+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		symbol := toStr(r[0])
 		path := toStr(r[1])
 		refCount := toInt(r[2])
 		fileCount := toInt(r[3])
-
 		if AnalyzeNoise(path, symbol, opts.IncludeTests) || symbols.IsModuleSymbol(symbol) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  refs=%d  files=%d  (%s)",
-			ShortName(symbol), refCount, fileCount, path))
-		if len(lines) >= limit {
-			break
-		}
+		return fmt.Sprintf("%s  refs=%d  files=%d  (%s)",
+			ShortName(symbol), refCount, fileCount, path)
+	}, 0, 0)
+}
+
+func acceptCycleLine(line string, includeTests bool, scope string) string {
+	if CyclePathNoise(line, includeTests) {
+		return ""
 	}
-	return lines, nil
+	if scope != "" && !cycleTouchesScope(line, scope) {
+		return ""
+	}
+	return line
 }
 
 func cycles(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
-	cap := limit * 5
-
 	twoWayQuery := fmt.Sprintf(`
 		WITH edges AS (%s)
 		SELECT e1.from_file || ' <-> ' || e1.to_file
@@ -261,54 +249,34 @@ func cycles(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		JOIN edges e2 ON e1.from_file = e2.to_file AND e1.to_file = e2.from_file
 		WHERE e1.from_file < e1.to_file
 		ORDER BY 1
-		LIMIT ?
 	`, FileEdgesSQL)
 
-	twoWayRows, err := fetchAllRows(db, twoWayQuery, cap)
+	lines, err := CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, twoWayQuery+" LIMIT ? OFFSET ?", pageSize, offset)
+	}, func(r []interface{}) string {
+		return acceptCycleLine(toStr(r[0]), opts.IncludeTests, opts.Scope)
+	}, 0, 0)
 	if err != nil {
 		return nil, err
 	}
-
-	var lines []string
-	for _, r := range twoWayRows {
-		cycleLine := toStr(r[0])
-		if !CyclePathNoise(cycleLine, opts.IncludeTests) {
-			lines = append(lines, cycleLine)
-		}
+	if len(lines) >= limit {
+		return lines, nil
 	}
 
 	edges, err := FetchFileEdges(db)
 	if err != nil {
 		return nil, err
 	}
-	longer, _ := FindLongerCycles(edges, 8, cap)
-	for _, path := range longer {
-		found := false
-		for _, l := range lines {
-			if l == path {
-				found = true
-				break
-			}
-		}
-		if !found && !CyclePathNoise(path, opts.IncludeTests) {
-			lines = append(lines, path)
-		}
-	}
 
-	if opts.Scope != "" {
-		var filtered []string
-		for _, line := range lines {
-			if cycleTouchesScope(line, opts.Scope) {
-				filtered = append(filtered, line)
-			}
-		}
-		lines = filtered
+	longer, err := CollectFromProducer(limit-len(lines), func(cap int) ([]string, error) {
+		return FindLongerCycles(edges, 8, cap)
+	}, func(path string) string {
+		return acceptCycleLine(path, opts.IncludeTests, opts.Scope)
+	}, 0)
+	if err != nil {
+		return nil, err
 	}
-
-	if len(lines) > limit {
-		lines = lines[:limit]
-	}
-	return lines, nil
+	return append(lines, longer...), nil
 }
 
 func cycleTouchesScope(cycleLine, scope string) bool {
@@ -322,30 +290,75 @@ func cycleTouchesScope(cycleLine, scope string) bool {
 	return false
 }
 
-func formatDeadExportRows(db *sql.DB, rows [][]interface{}, live *LiveIndex, opts CheckOptions, limit int) ([]string, error) {
-	var lines []string
-	for _, r := range rows {
+func deadExportSQL(scopeClause string) string {
+	return fmt.Sprintf(`
+		SELECT gs.id, gs.symbol, def_d.relative_path,
+			   sym_def.end_line - sym_def.start_line + 1 AS loc,
+			   def_d.id
+		FROM global_symbols gs
+		%s
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM mentions m
+			JOIN chunks c ON m.chunk_id = c.id
+			WHERE m.symbol_id = gs.id
+			  AND m.role != 1
+			  AND c.document_id != def_d.id
+		)%s
+		ORDER BY loc DESC, def_d.relative_path
+	`, SymDefJoin, scopeClause)
+}
+
+func unreferencedSQL(scopeClause string) string {
+	return fmt.Sprintf(`
+		SELECT gs.id, gs.symbol, def_d.relative_path,
+			   sym_def.end_line - sym_def.start_line + 1 AS loc,
+			   def_d.id
+		FROM global_symbols gs
+		%s
+		WHERE NOT EXISTS (
+			SELECT 1 FROM mentions m
+			WHERE m.symbol_id = gs.id AND m.role = 0
+		)
+		AND NOT EXISTS (
+			SELECT 1 FROM mentions m
+			JOIN chunks c ON m.chunk_id = c.id
+			WHERE m.symbol_id = gs.id AND m.role != 1 AND c.document_id != def_d.id
+		)%s
+		ORDER BY loc DESC, def_d.relative_path
+	`, SymDefJoin, scopeClause)
+}
+
+func collectDeadExportRows(
+	db *sql.DB,
+	sql string,
+	scopeParams []interface{},
+	live *LiveIndex,
+	opts CheckOptions,
+	limit int,
+) ([]string, error) {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, sql+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		symbolID := toInt(r[0])
 		symbol := toStr(r[1])
 		path := toStr(r[2])
 		loc := toInt(r[3])
 		defDocID := toInt(r[4])
-
 		if AnalyzeNoise(path, symbol, opts.IncludeTests) {
-			continue
+			return ""
 		}
 		if HasSameFileReferenceUsage(db, symbolID, defDocID) {
-			continue
+			return ""
+		}
+		if HasSameFileUsageMention(db, symbolID, defDocID) {
+			return ""
 		}
 		if live.DeadExportNoise(symbol, defDocID) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  loc=%d  (%s)", ShortName(symbol), loc, path))
-		if len(lines) >= limit {
-			break
-		}
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  loc=%d  (%s)", ShortName(symbol), loc, path)
+	}, 0, 0)
 }
 
 func staleTypes(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -368,45 +381,35 @@ func staleTypes(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		GROUP BY gs.id
 		HAVING consumers = 0
 		ORDER BY consumers ASC, def_d.relative_path
-		LIMIT ?
 	`, SymDefJoin, scopeClause)
-
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
 
 	live, err := BuildLiveIndex(db)
 	if err != nil {
 		return nil, err
 	}
 
-	var lines []string
-	for _, r := range rows {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, query+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		symID := toInt(r[0])
 		symbol := toStr(r[1])
 		path := toStr(r[2])
 		defDocID := toInt(r[3])
 		consumers := toInt(r[4])
-
 		if AnalyzeNoise(path, symbol, opts.IncludeTests) {
-			continue
+			return ""
 		}
 		if StaleTypeNoise(path, symbol, consumers) {
-			continue
+			return ""
 		}
 		if consumers == 0 && HasSameFileReferenceUsage(db, symID, defDocID) {
-			continue
+			return ""
 		}
 		if live.StaleTypeLiveNoise(symbol, defDocID) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  consumers=%d  (%s)", ShortName(symbol), consumers, path))
-		if len(lines) >= limit {
-			break
-		}
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  consumers=%d  (%s)", ShortName(symbol), consumers, path)
+	}, 0, 0)
 }
 
 func unreferencedSymbols(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -415,35 +418,11 @@ func unreferencedSymbols(db *sql.DB, limit int, opts CheckOptions) ([]string, er
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`
-		SELECT gs.id, gs.symbol, def_d.relative_path,
-			   sym_def.end_line - sym_def.start_line + 1 AS loc,
-			   def_d.id
-		FROM global_symbols gs
-		%s
-		WHERE NOT EXISTS (
-			SELECT 1 FROM mentions m
-			WHERE m.symbol_id = gs.id AND m.role = 0
-		)
-		AND NOT EXISTS (
-			SELECT 1 FROM mentions m
-			JOIN chunks c ON m.chunk_id = c.id
-			WHERE m.symbol_id = gs.id AND m.role != 1 AND c.document_id != def_d.id
-		)%s
-		ORDER BY loc DESC, def_d.relative_path
-		LIMIT ?
-	`, SymDefJoin, scopeClause)
-
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
-
 	live, err := BuildLiveIndex(db)
 	if err != nil {
 		return nil, err
 	}
-	return formatDeadExportRows(db, rows, live, opts, limit)
+	return collectDeadExportRows(db, unreferencedSQL(scopeClause), scopeParams, live, opts, limit)
 }
 
 func sameFileOnly(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -474,36 +453,26 @@ func sameFileOnly(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 			WHERE m.symbol_id = gs.id AND m.role = 0 AND c.document_id != def_d.id
 		)%s
 		ORDER BY loc DESC, def_d.relative_path
-		LIMIT ?
 	`, SymDefJoin, scopeClause)
 
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var lines []string
-	for _, r := range rows {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, query+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		symbol := toStr(r[0])
 		path := toStr(r[1])
 		loc := toInt(r[2])
 		defDocID := toInt(r[3])
-
 		if AnalyzeNoise(path, symbol, opts.IncludeTests) {
-			continue
+			return ""
 		}
 		if live.SameFileExportNoise(symbol, defDocID) {
-			continue
+			return ""
 		}
 		if !FileHasSCIPImporters(db, path, live, defDocID) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  loc=%d  (%s)", ShortName(symbol), loc, path))
-		if len(lines) >= limit {
-			break
-		}
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  loc=%d  (%s)", ShortName(symbol), loc, path)
+	}, 0, 0)
 }
 
 func symbolsTestOnlyConsumers(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -533,22 +502,16 @@ func symbolsTestOnlyConsumers(db *sql.DB, limit int, opts CheckOptions) ([]strin
 		GROUP BY gs.id
 		HAVING COUNT(DISTINCT ref_d.id) > 0
 		ORDER BY def_d.relative_path, gs.symbol
-		LIMIT ?
 	`, SymDefJoin, scopeClause)
 
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*10)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var lines []string
-	for _, r := range rows {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, query+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		symbol := toStr(r[0])
 		path := toStr(r[1])
 		consumerPaths := toStr(r[2])
-
 		if AnalyzeNoise(path, symbol, opts.IncludeTests) {
-			continue
+			return ""
 		}
 		pathList := []string{}
 		for _, p := range strings.Split(consumerPaths, ",") {
@@ -557,23 +520,16 @@ func symbolsTestOnlyConsumers(db *sql.DB, limit int, opts CheckOptions) ([]strin
 				pathList = append(pathList, p)
 			}
 		}
-		if len(pathList) > 0 {
-			allTest := true
-			for _, p := range pathList {
-				if !IsTestPath(p) {
-					allTest = false
-					break
-				}
-			}
-			if allTest {
-				lines = append(lines, fmt.Sprintf("%s  test_consumers=%d  (%s)", ShortName(symbol), len(pathList), path))
+		if len(pathList) == 0 {
+			return ""
+		}
+		for _, p := range pathList {
+			if !IsTestPath(p) {
+				return ""
 			}
 		}
-	}
-	if len(lines) > limit {
-		lines = lines[:limit]
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  test_consumers=%d  (%s)", ShortName(symbol), len(pathList), path)
+	}, 0, 0)
 }
 
 func deadFiles(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -583,7 +539,7 @@ func deadFiles(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT d.relative_path
+		SELECT d.relative_path, d.id
 		FROM documents d
 		WHERE NOT EXISTS (
 			SELECT 1
@@ -593,29 +549,24 @@ func deadFiles(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 			WHERE der.document_id = d.id AND c.document_id != d.id
 		)%s
 		ORDER BY d.relative_path
-		LIMIT ?
 	`, scopeClause)
 
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var lines []string
-	for _, r := range rows {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, query+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		path := toStr(r[0])
+		docID := toInt(r[1])
 		if !opts.IncludeTests && IsTestPath(path) {
-			continue
+			return ""
 		}
-		if isGeneratedAnalyzePath(path) {
-			continue
+		if IsDynamicLoaderPath(path) {
+			return ""
 		}
-		lines = append(lines, path)
-		if len(lines) >= limit {
-			break
+		if IsLowSignalDeadFile(db, docID) {
+			return ""
 		}
-	}
-	return lines, nil
+		return path
+	}, 0, 0)
 }
 
 func deadExports(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -624,34 +575,11 @@ func deadExports(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`
-		SELECT gs.id, gs.symbol, def_d.relative_path,
-			   sym_def.end_line - sym_def.start_line + 1 AS loc,
-			   def_d.id
-		FROM global_symbols gs
-		%s
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM mentions m
-			JOIN chunks c ON m.chunk_id = c.id
-			WHERE m.symbol_id = gs.id
-			  AND m.role != 1
-			  AND c.document_id != def_d.id
-		)%s
-		ORDER BY loc DESC, def_d.relative_path
-		LIMIT ?
-	`, SymDefJoin, scopeClause)
-
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
-
 	live, err := BuildLiveIndex(db)
 	if err != nil {
 		return nil, err
 	}
-	return formatDeadExportRows(db, rows, live, opts, limit)
+	return collectDeadExportRows(db, deadExportSQL(scopeClause), scopeParams, live, opts, limit)
 }
 
 func topCoupling(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
@@ -672,29 +600,19 @@ func topCoupling(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		WHERE m.role != 1 AND def_d.id != ref_d.id%s
 		GROUP BY def_d.id, ref_d.id
 		ORDER BY shared DESC
-		LIMIT ?
 	`, SymDefJoin, scopeClause)
 
-	rows, err := fetchAllRows(db, query, append(scopeParams, limit*5)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var lines []string
-	for _, r := range rows {
+	return CollectUntilLimit(limit, func(pageSize, offset int) ([][]interface{}, error) {
+		return fetchAllRows(db, query+" LIMIT ? OFFSET ?", append(scopeParams, pageSize, offset)...)
+	}, func(r []interface{}) string {
 		file1 := toStr(r[0])
 		file2 := toStr(r[1])
 		shared := toInt(r[2])
-
 		if FilePairNoise(file1, file2, opts.IncludeTests) {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("%s  <->  %s  shared=%d", file1, file2, shared))
-		if len(lines) >= limit {
-			break
-		}
-	}
-	return lines, nil
+		return fmt.Sprintf("%s  <->  %s  shared=%d", file1, file2, shared)
+	}, 0, 0)
 }
 
 func ParseChecks(values []string) (map[string]bool, error) {

@@ -18,6 +18,7 @@ import (
 	"github.com/flesler/scip-cli-go/v2/internal/cache"
 	"github.com/flesler/scip-cli-go/v2/internal/config"
 	"github.com/flesler/scip-cli-go/v2/internal/discover"
+	"github.com/flesler/scip-cli-go/v2/internal/exclude"
 	"github.com/flesler/scip-cli-go/v2/internal/merge"
 	"github.com/flesler/scip-cli-go/v2/internal/project"
 	"github.com/flesler/scip-cli-go/v2/internal/scip"
@@ -209,7 +210,7 @@ type indexResult struct {
 	errMsg string
 }
 
-func indexTSProjects(root string, projects []string, workDir string, env []string, outputDB string) indexResult {
+func indexTSProjects(root string, projects []string, workDir string, env []string, outputDB string, excludeGlobs []string) indexResult {
 	label := projectBatchLabel(projects)
 	if err := os.MkdirAll(workDir, 0755); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
@@ -228,7 +229,7 @@ func indexTSProjects(root string, projects []string, workDir string, env []strin
 	if err := runIndexer("scip-typescript", "@sourcegraph/scip-typescript", scip.ScipTypescriptVersion, "", "", absRoot, args, env); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
-	if err := convertScipToDB(partScip, dbPath, ""); err != nil {
+	if err := convertScipToDB(partScip, dbPath, "", excludeGlobs); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
 	return indexResult{label: label, dbPath: dbPath}
@@ -249,7 +250,7 @@ func projectLabel(proj string) string {
 	return proj
 }
 
-func indexOnePythonProject(root, proj, workDir string, env []string) indexResult {
+func indexOnePythonProject(root, proj, workDir string, env []string, excludeGlobs []string) indexResult {
 	label := projectLabel(proj)
 	if err := os.MkdirAll(workDir, 0755); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
@@ -260,13 +261,13 @@ func indexOnePythonProject(root, proj, workDir string, env []string) indexResult
 	if err := runIndexer("scip-python", "@sourcegraph/scip-python", scip.ScipPythonVersion, "", "", cwd, []string{"index", ".", "--output", partScip}, env); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
-	if err := convertScipToDB(partScip, partDB, proj); err != nil {
+	if err := convertScipToDB(partScip, partDB, proj, excludeGlobs); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
 	return indexResult{label: label, dbPath: partDB}
 }
 
-func indexOneGolangModule(root, proj, workDir string, env []string) indexResult {
+func indexOneGolangModule(root, proj, workDir string, env []string, excludeGlobs []string) indexResult {
 	label := projectLabel(proj)
 	if err := os.MkdirAll(workDir, 0755); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
@@ -278,13 +279,13 @@ func indexOneGolangModule(root, proj, workDir string, env []string) indexResult 
 	if err := runIndexer("scip-go", "", "", scip.ScipGoPackage, "", cwd, []string{"--output", partScip}, goEnv); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
-	if err := convertScipToDB(partScip, partDB, proj); err != nil {
+	if err := convertScipToDB(partScip, partDB, proj, excludeGlobs); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
 	return indexResult{label: label, dbPath: partDB}
 }
 
-func indexOneRustCrate(root, proj, workDir string, env []string) indexResult {
+func indexOneRustCrate(root, proj, workDir string, env []string, excludeGlobs []string) indexResult {
 	label := projectLabel(proj)
 	if err := os.MkdirAll(workDir, 0755); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
@@ -295,15 +296,15 @@ func indexOneRustCrate(root, proj, workDir string, env []string) indexResult {
 	if err := runIndexer("rust-analyzer", "", "", "", "rust-analyzer", cwd, []string{"scip", cwd, "--output", partScip}, env); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
-	if err := convertScipToDB(partScip, partDB, proj); err != nil {
+	if err := convertScipToDB(partScip, partDB, proj, excludeGlobs); err != nil {
 		return indexResult{label: label, errMsg: err.Error()}
 	}
 	return indexResult{label: label, dbPath: partDB}
 }
 
-type indexOneFunc func(root, proj, workDir string, env []string) indexResult
+type indexOneFunc func(root, proj, workDir string, env []string, excludeGlobs []string) indexResult
 
-func indexDiscovered(root, cacheDir string, projects []string, env []string, replace bool, indexOne indexOneFunc) (string, int, int, int, error) {
+func indexDiscovered(root, cacheDir string, projects []string, env []string, replace bool, excludeGlobs []string, indexOne indexOneFunc) (string, int, int, int, error) {
 	workers := indexWorkers()
 	useParallel := len(projects) > 1 && workers > 1
 	outputDB := cache.IndexDBPath(cacheDir, replace)
@@ -336,7 +337,7 @@ func indexDiscovered(root, cacheDir string, projects []string, env []string, rep
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				workDir := filepath.Join(tmpDir, fmt.Sprintf("part-%d", idx+1))
-				res := indexOne(root, p, workDir, env)
+				res := indexOne(root, p, workDir, env, excludeGlobs)
 				ch <- indexedResult{res: res, idx: idx}
 			}(i, proj)
 		}
@@ -372,7 +373,7 @@ func indexDiscovered(root, cacheDir string, projects []string, env []string, rep
 				fmt.Fprintf(os.Stderr, "Indexing %d/%d: %s\n", i+1, total, label)
 			}
 			workDir := filepath.Join(tmpDir, fmt.Sprintf("part-%d", i+1))
-			res := indexOne(root, proj, workDir, env)
+			res := indexOne(root, proj, workDir, env, excludeGlobs)
 			if res.dbPath == "" {
 				skipped++
 				fmt.Fprintf(os.Stderr, "Warning: skipped %s: %s\n", res.label, res.errMsg)
@@ -542,7 +543,7 @@ func runNpxIndexer(pkg, version, cwd string, args, env []string) error {
 	return nil
 }
 
-func convertScipToDB(scipPath, dbPath, documentPathPrefix string) error {
+func convertScipToDB(scipPath, dbPath, documentPathPrefix string, excludeGlobs []string) error {
 	if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -571,7 +572,7 @@ func convertScipToDB(scipPath, dbPath, documentPathPrefix string) error {
 		return fmt.Errorf("failed to convert index: output not created")
 	}
 
-	if err := postprocessIndex(dbPath); err != nil {
+	if err := postprocessIndex(dbPath, excludeGlobs); err != nil {
 		return err
 	}
 	prefix := strings.TrimPrefix(filepath.ToSlash(documentPathPrefix), "./")
@@ -591,7 +592,7 @@ func prefixDocumentPaths(dbPath, prefix string) error {
 	return err
 }
 
-func postprocessIndex(dbPath string) error {
+func postprocessIndex(dbPath string, excludeGlobs []string) error {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return err
@@ -604,6 +605,12 @@ func postprocessIndex(dbPath string) error {
 	}
 	defer tx.Rollback()
 
+	if len(excludeGlobs) > 0 {
+		if err := pruneExcludedDocuments(tx, excludeGlobs); err != nil {
+			return err
+		}
+	}
+
 	keepExternal := os.Getenv("SCIP_CLI_KEEP_EXTERNAL") == "1"
 	if err := trimUnusedColumns(tx, keepExternal); err != nil {
 		return err
@@ -614,11 +621,15 @@ func postprocessIndex(dbPath string) error {
 	if err := trimDefnToKnownSymbols(tx); err != nil {
 		return err
 	}
+	if err := recreatePostprocessIndexes(tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 type sqlExec interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
+	Query(query string, args ...interface{}) (*sql.Rows, error)
 	QueryRow(query string, args ...interface{}) *sql.Row
 }
 
@@ -708,6 +719,215 @@ func trimMentionsToKnownSymbols(db sqlExec) error {
 	return err
 }
 
+func pruneExcludedDocuments(db sqlExec, excludeGlobs []string) error {
+	rows, err := db.Query("SELECT id, relative_path FROM documents")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var excludeIDs []interface{}
+	for rows.Next() {
+		var id int
+		var path string
+		if err := rows.Scan(&id, &path); err != nil {
+			return err
+		}
+		if exclude.PathMatchesAnyGlob(path, excludeGlobs) {
+			excludeIDs = append(excludeIDs, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(excludeIDs) == 0 {
+		return nil
+	}
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(excludeIDs)), ",")
+	if _, err := db.Exec(`CREATE TABLE documents_new (
+		id INTEGER PRIMARY KEY,
+		relative_path TEXT NOT NULL UNIQUE
+	)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(
+		"INSERT INTO documents_new (id, relative_path) SELECT id, relative_path FROM documents WHERE id NOT IN ("+placeholders+")",
+		excludeIDs...,
+	); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DROP TABLE documents`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE documents_new RENAME TO documents`); err != nil {
+		return err
+	}
+
+	var chunksExists int
+	if err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks' LIMIT 1`).Scan(&chunksExists); err == nil {
+		if _, err := db.Exec(`CREATE TABLE chunks_new (
+			id INTEGER PRIMARY KEY,
+			document_id INTEGER NOT NULL,
+			chunk_index INTEGER NOT NULL,
+			start_line INTEGER NOT NULL,
+			end_line INTEGER NOT NULL,
+			occurrences BLOB NOT NULL
+		)`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`INSERT INTO chunks_new SELECT c.* FROM chunks c JOIN documents d ON c.document_id = d.id`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`DROP TABLE chunks`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`ALTER TABLE chunks_new RENAME TO chunks`); err != nil {
+			return err
+		}
+	}
+
+	var mentionsExists int
+	if err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='mentions' LIMIT 1`).Scan(&mentionsExists); err == nil {
+		if _, err := db.Exec(`CREATE TABLE mentions_new (
+			chunk_id INTEGER NOT NULL,
+			symbol_id INTEGER NOT NULL,
+			role INTEGER NOT NULL,
+			PRIMARY KEY (chunk_id, symbol_id, role)
+		)`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`INSERT INTO mentions_new (chunk_id, symbol_id, role)
+			SELECT m.chunk_id, m.symbol_id, m.role
+			FROM mentions m
+			JOIN chunks c ON c.id = m.chunk_id`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`DROP TABLE mentions`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`ALTER TABLE mentions_new RENAME TO mentions`); err != nil {
+			return err
+		}
+	}
+
+	var defnExists int
+	if err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='defn_enclosing_ranges' LIMIT 1`).Scan(&defnExists); err == nil {
+		if _, err := db.Exec(`CREATE TABLE defn_enclosing_ranges_new (
+			id INTEGER PRIMARY KEY,
+			document_id INTEGER NOT NULL,
+			symbol_id INTEGER NOT NULL,
+			start_line INTEGER NOT NULL,
+			start_char INTEGER NOT NULL,
+			end_line INTEGER NOT NULL,
+			end_char INTEGER NOT NULL
+		)`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`INSERT INTO defn_enclosing_ranges_new (
+			id, document_id, symbol_id, start_line, start_char, end_line, end_char
+		)
+			SELECT d.id, d.document_id, d.symbol_id, d.start_line, d.start_char, d.end_line, d.end_char
+			FROM defn_enclosing_ranges d
+			JOIN documents doc ON doc.id = d.document_id`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`DROP TABLE defn_enclosing_ranges`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`ALTER TABLE defn_enclosing_ranges_new RENAME TO defn_enclosing_ranges`); err != nil {
+			return err
+		}
+	}
+
+	if _, err := db.Exec(`CREATE TABLE global_symbols_new (
+		id INTEGER PRIMARY KEY,
+		symbol TEXT NOT NULL UNIQUE,
+		display_name TEXT,
+		kind INTEGER
+	)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`INSERT INTO global_symbols_new (id, symbol, display_name, kind)
+		SELECT g.id, g.symbol, g.display_name, g.kind
+		FROM global_symbols g
+		WHERE EXISTS (SELECT 1 FROM defn_enclosing_ranges d WHERE d.symbol_id = g.id)
+		   OR EXISTS (SELECT 1 FROM mentions m WHERE m.symbol_id = g.id)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DROP TABLE global_symbols`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE global_symbols_new RENAME TO global_symbols`); err != nil {
+		return err
+	}
+
+	if mentionsExists != 0 {
+		if _, err := db.Exec(`CREATE TABLE mentions_new (
+			chunk_id INTEGER NOT NULL,
+			symbol_id INTEGER NOT NULL,
+			role INTEGER NOT NULL,
+			PRIMARY KEY (chunk_id, symbol_id, role)
+		)`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`INSERT INTO mentions_new (chunk_id, symbol_id, role)
+			SELECT m.chunk_id, m.symbol_id, m.role
+			FROM mentions m
+			JOIN global_symbols g ON g.id = m.symbol_id`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`DROP TABLE mentions`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`ALTER TABLE mentions_new RENAME TO mentions`); err != nil {
+			return err
+		}
+	}
+
+	if defnExists != 0 {
+		if _, err := db.Exec(`CREATE TABLE defn_enclosing_ranges_new (
+			id INTEGER PRIMARY KEY,
+			document_id INTEGER NOT NULL,
+			symbol_id INTEGER NOT NULL,
+			start_line INTEGER NOT NULL,
+			start_char INTEGER NOT NULL,
+			end_line INTEGER NOT NULL,
+			end_char INTEGER NOT NULL
+		)`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`INSERT INTO defn_enclosing_ranges_new (
+			id, document_id, symbol_id, start_line, start_char, end_line, end_char
+		)
+			SELECT d.id, d.document_id, d.symbol_id, d.start_line, d.start_char, d.end_line, d.end_char
+			FROM defn_enclosing_ranges d
+			JOIN global_symbols g ON g.id = d.symbol_id`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`DROP TABLE defn_enclosing_ranges`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`ALTER TABLE defn_enclosing_ranges_new RENAME TO defn_enclosing_ranges`); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func recreatePostprocessIndexes(db sqlExec) error {
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_global_symbols_symbol ON global_symbols(symbol)`); err != nil {
+		return err
+	}
+	var mentionsExists int
+	if err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='mentions' LIMIT 1`).Scan(&mentionsExists); err != nil {
+		return nil
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_mentions_symbol_id_role ON mentions(symbol_id, role)`)
+	return err
+}
+
 func trimDefnToKnownSymbols(db sqlExec) error {
 	var exists int
 	err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='defn_enclosing_ranges' LIMIT 1`).Scan(&exists)
@@ -778,7 +998,7 @@ func indexerEnv(projectRoot string) ([]string, error) {
 	return env, nil
 }
 
-func indexTypescript(root, cacheDir string, projects []string, env []string, replace bool) (string, int, int, int, error) {
+func indexTypescript(root, cacheDir string, projects []string, env []string, replace bool, excludeGlobs []string) (string, int, int, int, error) {
 	batchSize, err := tsIndexBatchSize()
 	if err != nil {
 		return "", 0, 0, 0, err
@@ -822,7 +1042,7 @@ func indexTypescript(root, cacheDir string, projects []string, env []string, rep
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				workDir := filepath.Join(tmpDir, fmt.Sprintf("part-%d", idx+1))
-				res := indexTSProjects(root, b, workDir, env, "")
+				res := indexTSProjects(root, b, workDir, env, "", excludeGlobs)
 				ch <- indexedResult{res: res, idx: idx, batch: b}
 			}(i, batch)
 		}
@@ -867,7 +1087,7 @@ func indexTypescript(root, cacheDir string, projects []string, env []string, rep
 			if directOutput == "" {
 				workDir = filepath.Join(tmpDir, fmt.Sprintf("part-%d", i+1))
 			}
-			res := indexTSProjects(root, batch, workDir, env, directOutput)
+			res := indexTSProjects(root, batch, workDir, env, directOutput, excludeGlobs)
 			indexed += len(batch)
 			if res.dbPath == "" {
 				skipped += len(batch)
@@ -930,13 +1150,18 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 		return "", 0, 0, err
 	}
 
+	excludeGlobs, err := exclude.ResolveExcludeGlobs(absRoot)
+	if err != nil {
+		return "", 0, 0, err
+	}
+
 	switch project.Language(lang) {
 	case project.LanguageTypeScript:
 		projects, err := typescriptProjects(absRoot)
 		if err != nil {
 			return "", 0, 0, err
 		}
-		outputDB, _, skipped, total, err := indexTypescript(absRoot, cacheDir, projects, env, replace)
+		outputDB, _, skipped, total, err := indexTypescript(absRoot, cacheDir, projects, env, replace, excludeGlobs)
 		if err != nil {
 			return "", 0, 0, err
 		}
@@ -954,7 +1179,7 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 		if err != nil {
 			return "", 0, 0, err
 		}
-		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, projects, env, replace, indexOnePythonProject)
+		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, projects, env, replace, excludeGlobs, indexOnePythonProject)
 		if err != nil {
 			return "", 0, 0, err
 		}
@@ -972,7 +1197,7 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 		if err != nil {
 			return "", 0, 0, err
 		}
-		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, modules, os.Environ(), replace, indexOneGolangModule)
+		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, modules, os.Environ(), replace, excludeGlobs, indexOneGolangModule)
 		if err != nil {
 			return "", 0, 0, err
 		}
@@ -990,7 +1215,7 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 		if err != nil {
 			return "", 0, 0, err
 		}
-		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, crates, os.Environ(), replace, indexOneRustCrate)
+		outputDB, _, skipped, total, err := indexDiscovered(absRoot, cacheDir, crates, os.Environ(), replace, excludeGlobs, indexOneRustCrate)
 		if err != nil {
 			return "", 0, 0, err
 		}

@@ -373,10 +373,10 @@ func fileChecks(relativePath string, includeTopSymbols bool) []Check {
 	return checks
 }
 
-func RunFileSections(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget) ([]SectionResult, error) {
-	return RunChecks(fileChecks(relativePath, true), db, limit, priorities, CheckOptions{}, budget)
+func RunFileSections(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
+	return RunChecks(fileChecks(relativePath, true), db, limit, priorities, CheckOptions{}, budget, selectedChecks)
 }
 
-func RunFileSectionsOnly(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget) ([]SectionResult, error) {
-	return RunChecks(fileChecks(relativePath, false), db, limit, priorities, CheckOptions{}, budget)
+func RunFileSectionsOnly(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
+	return RunChecks(fileChecks(relativePath, false), db, limit, priorities, CheckOptions{}, budget, selectedChecks)
 }

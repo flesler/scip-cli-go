@@ -11,7 +11,7 @@ func TestLoadProjectConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.MaxHeapMb != nil || len(settings.IndexRoots) != 0 || settings.OnlyIndexRoots {
+	if settings.MaxHeapMb != nil || len(settings.IndexRoots) != 0 || settings.OnlyIndexRoots || len(settings.ExcludeGlobs) != 0 {
 		t.Fatalf("unexpected defaults: %+v", settings)
 	}
 }

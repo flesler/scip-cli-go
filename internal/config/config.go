@@ -13,6 +13,7 @@ type ProjectSettings struct {
 	MaxHeapMb      *int     `json:"maxHeapMb,omitempty"`
 	IndexRoots     []string `json:"indexRoots,omitempty"`
 	OnlyIndexRoots bool     `json:"onlyIndexRoots,omitempty"`
+	ExcludeGlobs   []string `json:"excludeGlobs,omitempty"`
 }
 
 func LoadProjectConfig(projectRoot string) (*ProjectSettings, error) {
@@ -68,6 +69,23 @@ func LoadProjectConfig(projectRoot string) (*ProjectSettings, error) {
 			settings.OnlyIndexRoots = b
 		} else {
 			return nil, fmt.Errorf("invalid %s: onlyIndexRoots must be a boolean", ConfigFilename)
+		}
+	}
+
+	if v, ok := raw["excludeGlobs"]; ok {
+		if v != nil {
+			if arr, ok := v.([]interface{}); ok {
+				settings.ExcludeGlobs = make([]string, 0, len(arr))
+				for _, item := range arr {
+					if s, ok := item.(string); ok {
+						settings.ExcludeGlobs = append(settings.ExcludeGlobs, s)
+					} else {
+						return nil, fmt.Errorf("invalid %s: excludeGlobs must be a string array", ConfigFilename)
+					}
+				}
+			} else {
+				return nil, fmt.Errorf("invalid %s: excludeGlobs must be a string array", ConfigFilename)
+			}
 		}
 	}
 

@@ -13,7 +13,7 @@ import (
 	"github.com/flesler/scip-cli-go/v2/internal/symbols"
 )
 
-const version = "2.6.0"
+const version = "2.8.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -272,6 +272,11 @@ func runAnalyze(argv []string) error {
 	pathFlag := fs.String("path", "", "limit to file or directory")
 	includeTests := fs.Bool("include-tests", false, "include test paths")
 	priority := fs.String("priority", "", "comma-separated check tiers")
+	var checkArgs []string
+	fs.Func("check", "run only these analyze sections (repeatable)", func(s string) error {
+		checkArgs = append(checkArgs, s)
+		return nil
+	})
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -285,6 +290,7 @@ func runAnalyze(argv []string) error {
 		"path_scope":    pathScope(*pathFlag),
 		"include_tests": *includeTests,
 		"priority":      *priority,
+		"check":         checkArgs,
 	})
 }
 
@@ -296,11 +302,17 @@ func runReindex(argv []string) error {
 		return nil
 	})
 	withExternal := fs.Bool("with-external", false, "keep external library symbols without definitions (increases index size ~5x)")
+	var excludeArgs []string
+	fs.Func("exclude", "omit matching files from the index after conversion (repeatable)", func(s string) error {
+		excludeArgs = append(excludeArgs, s)
+		return nil
+	})
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
 	return commands.ReindexMain(map[string]interface{}{
 		"path":          pathArgs,
+		"exclude":       excludeArgs,
 		"with_external": *withExternal,
 	})
 }
@@ -373,6 +385,7 @@ func (f *flagSet) Func(name, usage string, fn func(string) error) {
 
 func (f *flagSet) Parse(argv []string) error {
 	i := 0
+parseArgs:
 	for i < len(argv) {
 		arg := argv[i]
 		if arg == "--" {
@@ -445,13 +458,11 @@ func (f *flagSet) Parse(argv []string) error {
 					return err
 				}
 				i++
-				goto next
+				continue parseArgs
 			}
 		}
 
 		return fmt.Errorf("unknown flag --%s", name)
-	next:
-		i++
 	}
 	f.parsed = true
 	return nil

@@ -42,11 +42,94 @@ func seedIndexDB(t *testing.T, path string) {
 	conn.Exec("INSERT INTO defn_enclosing_ranges VALUES (1, 1, 2, 0, 0, 0, 0)")
 }
 
+func TestPostprocessIndex_prunesExcludedDocuments(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "index.db")
+	conn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Exec(`
+		CREATE TABLE documents (id INTEGER PRIMARY KEY, relative_path TEXT NOT NULL UNIQUE);
+		CREATE TABLE chunks (id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL, chunk_index INTEGER NOT NULL,
+			start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, occurrences BLOB NOT NULL);
+		CREATE TABLE global_symbols (id INTEGER PRIMARY KEY, symbol TEXT NOT NULL UNIQUE, display_name TEXT, kind INTEGER);
+		CREATE TABLE mentions (chunk_id INTEGER NOT NULL, symbol_id INTEGER NOT NULL, role INTEGER NOT NULL,
+			PRIMARY KEY (chunk_id, symbol_id, role));
+		CREATE TABLE defn_enclosing_ranges (id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL, symbol_id INTEGER NOT NULL,
+			start_line INTEGER NOT NULL, start_char INTEGER NOT NULL, end_line INTEGER NOT NULL, end_char INTEGER NOT NULL);
+		INSERT INTO documents VALUES (1, 'src/helper.ts'), (2, 'src/__tests__/fixtureOnly.spec.ts');
+		INSERT INTO chunks VALUES (1, 1, 0, 0, 10, X''), (2, 2, 0, 0, 10, X'');
+		INSERT INTO global_symbols VALUES (1, 'sym-greet', 'greet', 12), (2, 'sym-fixture', 'fixtureOnlyHelper', 12);
+		INSERT INTO mentions VALUES (1, 1, 1), (2, 2, 1);
+		INSERT INTO defn_enclosing_ranges VALUES (1, 1, 1, 0, 0, 5, 0), (2, 2, 2, 0, 0, 5, 0);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+
+	globs := []string{"**/__tests__/**", "**/*.spec.ts", "**/*.test.ts"}
+	if err := postprocessIndex(dbPath, globs); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var paths []string
+	rows, err := db.Query("SELECT relative_path FROM documents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	rows.Close()
+
+	var symbols []string
+	rows, err = db.Query("SELECT display_name FROM global_symbols")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		symbols = append(symbols, s)
+	}
+	rows.Close()
+
+	if len(paths) != 1 || paths[0] != "src/helper.ts" {
+		t.Fatalf("paths=%v", paths)
+	}
+	hasGreet, hasFixture := false, false
+	for _, s := range symbols {
+		if s == "greet" {
+			hasGreet = true
+		}
+		if s == "fixtureOnlyHelper" {
+			hasFixture = true
+		}
+	}
+	if !hasGreet || hasFixture {
+		t.Fatalf("symbols=%v", symbols)
+	}
+}
+
 func TestPostprocessIndex_omitsVariables(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "index.db")
 	seedIndexDB(t, dbPath)
-	if err := postprocessIndex(dbPath); err != nil {
+	if err := postprocessIndex(dbPath, nil); err != nil {
 		t.Fatal(err)
 	}
 	db, _ := sql.Open("sqlite", dbPath)

@@ -40,9 +40,14 @@ func AnalyzeMain(args map[string]interface{}) error {
 	limit := args["limit"].(int)
 	includeTests := args["include_tests"].(bool)
 	priorityStr := args["priority"].(string)
+	checkArgs := args["check"].([]string)
 	targetName := args["target"].(string)
 
 	priorities, err := analyze.ParsePriorities(priorityStr)
+	if err != nil {
+		return err
+	}
+	selectedChecks, err := analyze.ParseChecks(checkArgs)
 	if err != nil {
 		return err
 	}
@@ -55,7 +60,7 @@ func AnalyzeMain(args map[string]interface{}) error {
 			fmt.Fprintf(os.Stderr, "Error: use analyze %q for directory scope (not analyze --path)\n", pathScope)
 			return clierr.Exit(1)
 		}
-		secs, err = analyze.RunProjectSections(db, limit, includeTests, "", priorities, budget)
+		secs, err = analyze.RunProjectSections(db, limit, includeTests, "", priorities, budget, selectedChecks)
 		if err != nil {
 			return err
 		}
@@ -67,18 +72,18 @@ func AnalyzeMain(args map[string]interface{}) error {
 
 		switch resolved.Kind {
 		case "dir":
-			secs, err = analyze.RunDirSections(db, resolved.Scope, limit, includeTests, priorities, budget)
+			secs, err = analyze.RunDirSections(db, resolved.Scope, limit, includeTests, priorities, budget, selectedChecks)
 			if err != nil {
 				return err
 			}
 		case "file":
 			fileInclude := projectIncludeTests(includeTests, resolved.Scope)
-			secs, err = analyze.RunProjectSections(db, limit, fileInclude, resolved.Scope, priorities, budget)
+			secs, err = analyze.RunProjectSections(db, limit, fileInclude, resolved.Scope, priorities, budget, selectedChecks)
 			if err != nil {
 				return err
 			}
 			if !budget.Exhausted() {
-				fileSecs, err := analyze.RunFileSections(db, resolved.Scope, limit, priorities, budget)
+				fileSecs, err := analyze.RunFileSections(db, resolved.Scope, limit, priorities, budget, selectedChecks)
 				if err != nil {
 					return err
 				}
@@ -89,7 +94,7 @@ func AnalyzeMain(args map[string]interface{}) error {
 			if err != nil {
 				return err
 			}
-			secs, err = analyze.RunSymbolSections(db, sym.ID, limit, priorities, budget)
+			secs, err = analyze.RunSymbolSections(db, sym.ID, limit, priorities, budget, selectedChecks)
 			if err != nil {
 				return err
 			}

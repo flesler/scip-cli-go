@@ -73,7 +73,7 @@ func TestRowBudgetViaRunChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	budget := NewRowBudget(3)
-	secs, err := RunProjectSections(db, 50, false, "", nil, budget)
+	secs, err := RunProjectSections(db, 50, false, "", nil, budget, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

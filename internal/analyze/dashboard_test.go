@@ -101,7 +101,7 @@ func TestTestOnlyConsumers(t *testing.T) {
 func TestRunProjectSectionsRespectsBudget(t *testing.T) {
 	db, _ := testdb.MiniCodebase()
 	budget := NewRowBudget(3)
-	secs, err := RunProjectSections(db, 50, false, "", nil, budget)
+	secs, err := RunProjectSections(db, 50, false, "", nil, budget, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestRunProjectSectionsRespectsBudget(t *testing.T) {
 	if total > 3 {
 		t.Fatalf("budget exceeded: %d rows", total)
 	}
-	if len(secs) >= 9 {
+	if len(secs) >= 10 {
 		t.Fatalf("expected early stop, got %d sections", len(secs))
 	}
 }
@@ -124,12 +124,12 @@ func TestRunProjectSectionsRespectsBudget(t *testing.T) {
 func TestRunProjectSectionsHighPriorityOnly(t *testing.T) {
 	db, _ := testdb.MiniCodebase()
 	p := map[Priority]bool{PriorityHigh: true}
-	secs, err := RunProjectSections(db, 500, false, "", p, NewRowBudget(500))
+	secs, err := RunProjectSections(db, 500, false, "", p, NewRowBudget(500), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(secs) != 4 {
-		t.Fatalf("expected 4 high sections, got %d", len(secs))
+	if len(secs) != 5 {
+		t.Fatalf("expected 5 high sections, got %d", len(secs))
 	}
 	for _, s := range secs {
 		if !strings.Contains(s.Title, "[high]") {
@@ -247,7 +247,7 @@ func TestSymbolRunAllFiveSections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secs, err := RunSymbolSections(db, fooID, 500, nil, NewRowBudget(500))
+	secs, err := RunSymbolSections(db, fooID, 500, nil, NewRowBudget(500), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,14 +293,14 @@ func TestUnreferencedFindsOrphan(t *testing.T) {
 	}
 }
 
-func TestRunProjectSectionsNineSections(t *testing.T) {
+func TestRunProjectSectionsTenSections(t *testing.T) {
 	db, _ := testdb.MiniCodebase()
-	secs, err := RunProjectSections(db, 500, false, "", nil, NewRowBudget(500))
+	secs, err := RunProjectSections(db, 500, false, "", nil, NewRowBudget(500), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(secs) != 9 {
-		t.Fatalf("expected 9 sections, got %d", len(secs))
+	if len(secs) != 10 {
+		t.Fatalf("expected 10 sections, got %d", len(secs))
 	}
 	high, low := 0, 0
 	for _, s := range secs {
@@ -311,7 +311,7 @@ func TestRunProjectSectionsNineSections(t *testing.T) {
 			low++
 		}
 	}
-	if high != 4 || low != 4 {
+	if high != 5 || low != 4 {
 		t.Fatalf("priority counts high=%d low=%d", high, low)
 	}
 	if !strings.Contains(secs[0].Title, "Cycles") {
@@ -321,7 +321,7 @@ func TestRunProjectSectionsNineSections(t *testing.T) {
 
 func TestDeadExportsPrefaceWhenHits(t *testing.T) {
 	db, _ := testdb.MiniCodebase()
-	secs, err := RunProjectSections(db, 20, false, "", nil, NewRowBudget(20))
+	secs, err := RunProjectSections(db, 20, false, "", nil, NewRowBudget(20), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestCyclesKeepsRuntimeMutualImports(t *testing.T) {
 
 func TestRunFileSectionsIncludesCoupling(t *testing.T) {
 	db, _ := testdb.MiniCodebase()
-	secs, err := RunFileSections(db, "src/lib.ts", 500, nil, NewRowBudget(500))
+	secs, err := RunFileSections(db, "src/lib.ts", 500, nil, NewRowBudget(500), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,6 +432,81 @@ func TestRunFileSectionsIncludesCoupling(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected coupling section")
+	}
+}
+
+func TestDeadFilesEmptyRdeps(t *testing.T) {
+	b, err := testdb.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	used := b.Define("src/used.ts", "usedFn", 0, 10)
+	b.Reference("src/entry.ts", used)
+	b.Define("src/orphan.ts", "orphanFn", 0, 10)
+	b.Define("tests/orphan.spec.ts", "testHelper", 0, 10)
+	db := b.Finish()
+
+	lines, err := deadFiles(db, 20, CheckOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !linesContainAny(lines, "src/orphan.ts") || !linesContainAny(lines, "src/entry.ts") {
+		t.Fatalf("expected orphan/entry dead files: %v", lines)
+	}
+	if linesContainAny(lines, "src/used.ts") {
+		t.Fatalf("used file should not be dead: %v", lines)
+	}
+	if linesContainAny(lines, "orphan.spec.ts") {
+		t.Fatalf("test file should be filtered: %v", lines)
+	}
+
+	withTests, err := deadFiles(db, 20, CheckOptions{IncludeTests: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !linesContainAny(withTests, "orphan.spec.ts") {
+		t.Fatalf("expected test orphan with include_tests: %v", withTests)
+	}
+}
+
+func TestDeadFilesPrefaceWhenHits(t *testing.T) {
+	db, _ := testdb.MiniCodebase()
+	secs, err := RunProjectSections(db, 20, false, "", nil, NewRowBudget(20), map[string]bool{"dead_files": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secs) != 1 {
+		t.Fatalf("expected 1 section, got %d", len(secs))
+	}
+	if !strings.Contains(secs[0].Title, "Dead files") {
+		t.Fatalf("title=%s", secs[0].Title)
+	}
+	if len(secs[0].Lines) > 0 && secs[0].Lines[0] != "(none)" {
+		if secs[0].Preface == "" || !strings.Contains(secs[0].Preface, "rdeps") || !strings.Contains(secs[0].Preface, "export const") {
+			t.Fatalf("preface=%q lines=%v", secs[0].Preface, secs[0].Lines)
+		}
+	}
+}
+
+func TestParseChecksUnknown(t *testing.T) {
+	_, err := ParseChecks([]string{"not_a_check"})
+	if err == nil || !strings.Contains(err.Error(), "unknown analyze check") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestParseChecksFiltersSections(t *testing.T) {
+	db, _ := testdb.MiniCodebase()
+	checks, err := ParseChecks([]string{"cycles", "hotspots"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secs, err := RunProjectSections(db, 500, false, "", map[Priority]bool{PriorityHigh: true}, NewRowBudget(500), checks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secs) != 1 || !strings.Contains(secs[0].Title, "Cycles") {
+		t.Fatalf("sections=%v", secs)
 	}
 }
 

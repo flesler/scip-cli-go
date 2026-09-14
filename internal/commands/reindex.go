@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/flesler/scip-cli-go/v2/internal/clierr"
+	"github.com/flesler/scip-cli-go/v2/internal/exclude"
 	"github.com/flesler/scip-cli-go/v2/internal/indexing"
 	"github.com/flesler/scip-cli-go/v2/internal/paths"
 	"github.com/flesler/scip-cli-go/v2/internal/project"
@@ -19,6 +20,7 @@ func ReindexMain(args map[string]interface{}) error {
 	}
 
 	pathArgs := args["path"].([]string)
+	excludeArgs := args["exclude"].([]string)
 	withExternal := false
 	if v, ok := args["with_external"].(bool); ok {
 		withExternal = v
@@ -45,6 +47,22 @@ func ReindexMain(args map[string]interface{}) error {
 		fmt.Fprintln(os.Stderr, "Warning: scoped reindex replaces the cache with only these projects; run reindex with no --path to restore the full index")
 	} else {
 		if err := scope.SaveIndexScope(root, nil); err != nil {
+			return err
+		}
+	}
+
+	if len(excludeArgs) > 0 {
+		for _, glob := range excludeArgs {
+			if err := exclude.ValidateGlob(glob); err != nil {
+				return err
+			}
+		}
+		if err := exclude.SavePersistedExcludeGlobs(root, excludeArgs); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Index exclude: %s\n", exclude.FormatExcludeGlobs(excludeArgs))
+	} else {
+		if err := exclude.SavePersistedExcludeGlobs(root, nil); err != nil {
 			return err
 		}
 	}

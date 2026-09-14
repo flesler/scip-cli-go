@@ -185,7 +185,7 @@ func bindSymbol0(fn symbolCheckFn0, symbolID int) CheckFunc {
 	}
 }
 
-func RunSymbolSections(db *sql.DB, symbolID int, limit int, priorities map[Priority]bool, budget *RowBudget) ([]SectionResult, error) {
+func RunSymbolSections(db *sql.DB, symbolID int, limit int, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
 	checks := []Check{
 		{"consumer_files", PriorityHigh, "Consumer files (direct)", bindSymbol(consumerFiles, symbolID), ""},
 		{"dependencies", PriorityHigh, "Dependencies (cross-file)", bindSymbol(symbolDependencies, symbolID), ""},
@@ -193,5 +193,5 @@ func RunSymbolSections(db *sql.DB, symbolID int, limit int, priorities map[Prior
 		{"symbol_pressure", PriorityLow, "Symbol pressure (loc x fan metrics)", bindSymbol0(symbolPressure, symbolID), ""},
 		{"def_context", PriorityLow, "Definition context", bindSymbol0(defContext, symbolID), ""},
 	}
-	return RunChecks(checks, db, limit, priorities, CheckOptions{}, budget)
+	return RunChecks(checks, db, limit, priorities, CheckOptions{}, budget, selectedChecks)
 }

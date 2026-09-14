@@ -320,7 +320,7 @@ func TestLogIndexComplete(t *testing.T) {
 	old := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w
-	logIndexComplete(dbPath, "typescript", 3, 1)
+	logIndexComplete(dbPath, "typescript", 3, 1, -1)
 	w.Close()
 	os.Stderr = old
 	var buf bytes.Buffer

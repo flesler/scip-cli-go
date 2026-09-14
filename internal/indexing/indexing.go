@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,7 +134,23 @@ func formatDBSize(dbPath string) string {
 	return fmt.Sprintf("%.1f MB", float64(nbytes)/(1024*1024))
 }
 
-func logIndexComplete(dbPath, lang string, projects, skipped int) {
+func formatElapsed(seconds float64) string {
+	if seconds >= 60 {
+		minutes := int(seconds / 60)
+		secs := int(math.Round(seconds - float64(minutes)*60))
+		if secs == 60 {
+			minutes++
+			secs = 0
+		}
+		return fmt.Sprintf("%dm %ds", minutes, secs)
+	}
+	if seconds >= 10 {
+		return fmt.Sprintf("%ds", int(math.Round(seconds)))
+	}
+	return fmt.Sprintf("%.1fs", seconds)
+}
+
+func logIndexComplete(dbPath, lang string, projects, skipped int, elapsedSeconds float64) {
 	size := formatDBSize(dbPath)
 	suffix := ""
 	if projects > 1 {
@@ -141,6 +158,9 @@ func logIndexComplete(dbPath, lang string, projects, skipped int) {
 		if skipped > 0 {
 			suffix += fmt.Sprintf(", %d skipped", skipped)
 		}
+	}
+	if elapsedSeconds >= 0 {
+		suffix += ", " + formatElapsed(elapsedSeconds)
 	}
 	fmt.Fprintf(os.Stderr, "Indexed %s (%s, %s%s)\n", dbPath, size, lang, suffix)
 }
@@ -1171,7 +1191,7 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 			if total > 1 {
 				projCount = total
 			}
-			logIndexComplete(outputDB, lang, projCount, skipped)
+			logIndexComplete(outputDB, lang, projCount, skipped, -1)
 		}
 		return outputDB, skipped, total, nil
 
@@ -1189,7 +1209,7 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 			if total > 1 {
 				projCount = total
 			}
-			logIndexComplete(outputDB, lang, projCount, skipped)
+			logIndexComplete(outputDB, lang, projCount, skipped, -1)
 		}
 		return outputDB, skipped, total, nil
 
@@ -1207,7 +1227,7 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 			if total > 1 {
 				projCount = total
 			}
-			logIndexComplete(outputDB, lang, projCount, skipped)
+			logIndexComplete(outputDB, lang, projCount, skipped, -1)
 		}
 		return outputDB, skipped, total, nil
 
@@ -1225,7 +1245,7 @@ func indexProject(root, lang, cacheDir string, replace, doLog bool) (string, int
 			if total > 1 {
 				projCount = total
 			}
-			logIndexComplete(outputDB, lang, projCount, skipped)
+			logIndexComplete(outputDB, lang, projCount, skipped, -1)
 		}
 		return outputDB, skipped, total, nil
 
@@ -1268,7 +1288,7 @@ func GetDB(projectRoot string) (*sql.DB, error) {
 			if total > 1 {
 				projCount = total
 			}
-			logIndexComplete(outputDB, string(lang), projCount, skipped)
+			logIndexComplete(outputDB, string(lang), projCount, skipped, -1)
 		}
 
 		dbPath = cache.FindDB(root)
@@ -1336,6 +1356,7 @@ func Reindex(projectRoot string, opts *ReindexOptions) error {
 	}
 
 	cache.CleanupInProgressIndex(cacheDir)
+	started := time.Now()
 	outputDB, skipped, total, err := indexProject(root, string(lang), cacheDir, true, false)
 	if err != nil {
 		cache.CleanupInProgressIndex(cacheDir)
@@ -1348,6 +1369,6 @@ func Reindex(projectRoot string, opts *ReindexOptions) error {
 	if total > 1 {
 		projCount = total
 	}
-	logIndexComplete(outputDB, string(lang), projCount, skipped)
+	logIndexComplete(outputDB, string(lang), projCount, skipped, time.Since(started).Seconds())
 	return nil
 }

@@ -96,7 +96,7 @@ func fileConsumers(db *sql.DB, relativePath string, limit int) ([]string, error)
 }
 
 func unreferencedInFile(db *sql.DB, relativePath string, limit int) ([]string, error) {
-	live, err := BuildLiveIndex(db)
+	live, err := LiveFor(db)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func unreferencedInFile(db *sql.DB, relativePath string, limit int) ([]string, e
 }
 
 func sameFileOnlyInFile(db *sql.DB, relativePath string, limit int) ([]string, error) {
-	live, err := BuildLiveIndex(db)
+	live, err := LiveFor(db)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func sameFileOnlyInFile(db *sql.DB, relativePath string, limit int) ([]string, e
 }
 
 func deadInFile(db *sql.DB, relativePath string, limit int) ([]string, error) {
-	live, err := BuildLiveIndex(db)
+	live, err := LiveFor(db)
 	if err != nil {
 		return nil, err
 	}
@@ -361,10 +361,10 @@ func fileChecks(relativePath string, includeTopSymbols bool) []Check {
 	return checks
 }
 
-func RunFileSections(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
-	return RunChecks(fileChecks(relativePath, true), db, limit, priorities, CheckOptions{}, budget, selectedChecks)
+func RunFileSections(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool, perCheckLimit int) ([]SectionResult, error) {
+	return RunChecks(fileChecks(relativePath, true), db, limit, priorities, CheckOptions{}, budget, selectedChecks, perCheckLimit)
 }
 
-func RunFileSectionsOnly(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
-	return RunChecks(fileChecks(relativePath, false), db, limit, priorities, CheckOptions{}, budget, selectedChecks)
+func RunFileSectionsOnly(db *sql.DB, relativePath string, limit int, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool, perCheckLimit int) ([]SectionResult, error) {
+	return RunChecks(fileChecks(relativePath, false), db, limit, priorities, CheckOptions{}, budget, selectedChecks, perCheckLimit)
 }

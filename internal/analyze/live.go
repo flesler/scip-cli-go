@@ -215,7 +215,44 @@ type LiveIndex struct {
 	ModuleImporters map[int]int
 }
 
+type boundLive struct {
+	db    *sql.DB
+	index *LiveIndex
+}
+
+var liveBindings []boundLive
+
+// LiveFor reuses a bound LiveIndex during an analyze pass; otherwise builds a new one.
+func LiveFor(db *sql.DB) (*LiveIndex, error) {
+	for i := len(liveBindings) - 1; i >= 0; i-- {
+		if liveBindings[i].db == db {
+			return liveBindings[i].index, nil
+		}
+	}
+	return BuildLiveIndex(db)
+}
+
+// BindLive installs a shared LiveIndex for this analyze pass. Nested binds on the same db reuse it.
+// Call the returned reset function in a defer/finally.
+func BindLive(db *sql.DB) (func(), error) {
+	idx, err := LiveFor(db)
+	if err != nil {
+		return nil, err
+	}
+	liveBindings = append(liveBindings, boundLive{db: db, index: idx})
+	return func() {
+		liveBindings = liveBindings[:len(liveBindings)-1]
+	}, nil
+}
+
+// LiveIndexConstructor builds a LiveIndex; tests may replace it to count constructions.
+var LiveIndexConstructor = defaultLiveIndexConstructor
+
 func BuildLiveIndex(db *sql.DB) (*LiveIndex, error) {
+	return LiveIndexConstructor(db)
+}
+
+func defaultLiveIndexConstructor(db *sql.DB) (*LiveIndex, error) {
 	idx := &LiveIndex{
 		LiveModuleDocs:  make(map[int]bool),
 		LiveAliasBases:  make(map[string]bool),

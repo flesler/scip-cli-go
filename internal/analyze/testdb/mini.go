@@ -54,3 +54,12 @@ func SymbolID(db *sql.DB, displayName string) (int, error) {
 	}
 	return id, nil
 }
+
+func DocumentID(db *sql.DB, relativePath string) (int, error) {
+	var id int
+	err := db.QueryRow("SELECT id FROM documents WHERE relative_path = ?", relativePath).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("document %q: %w", relativePath, err)
+	}
+	return id, nil
+}

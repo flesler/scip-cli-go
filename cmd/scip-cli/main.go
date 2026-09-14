@@ -269,6 +269,7 @@ func runSkill(argv []string) error {
 func runAnalyze(argv []string) error {
 	fs := newFlagSet("analyze")
 	limit := fs.Int("limit", 20, "max result rows total")
+	perCheckLimit := fs.Int("per-check-limit", 0, "max result rows per section (0 = unlimited)")
 	pathFlag := fs.String("path", "", "limit to file or directory")
 	includeTests := fs.Bool("include-tests", false, "include test paths")
 	priority := fs.String("priority", "", "comma-separated check tiers")
@@ -285,12 +286,13 @@ func runAnalyze(argv []string) error {
 		target = fs.Args()[0]
 	}
 	return commands.AnalyzeMain(map[string]interface{}{
-		"target":        target,
-		"limit":         *limit,
-		"path_scope":    pathScope(*pathFlag),
-		"include_tests": *includeTests,
-		"priority":      *priority,
-		"check":         checkArgs,
+		"target":           target,
+		"limit":            *limit,
+		"per_check_limit":  *perCheckLimit,
+		"path_scope":       pathScope(*pathFlag),
+		"include_tests":    *includeTests,
+		"priority":         *priority,
+		"check":            checkArgs,
 	})
 }
 

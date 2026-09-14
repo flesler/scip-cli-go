@@ -14,7 +14,7 @@ else
 export PATH := $(CURDIR)/bin:$(PATH)
 endif
 
-.PHONY: build install test test-unit test-e2e test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean sync-upstream check-upstream publish
+.PHONY: build install test test-unit test-e2e test-bench test-cross fmt fmt-check vet typecheck lint tools setup pre-commit clean sync-upstream check-upstream publish
 
 build:
 	$(GO) build -o $(BINARY) $(CMD)
@@ -41,6 +41,10 @@ test-unit:
 
 test-e2e:
 	$(GO) test ./internal/e2e/... -count=1 -timeout 10m
+
+test-bench:
+	@chmod +x scripts/bench.sh
+	@scripts/bench.sh
 
 # Python (PATH scip-cli) vs Go output parity on the TS fixture. Requires npx + ../scip-cli venv or PATH scip-cli.
 test-cross:

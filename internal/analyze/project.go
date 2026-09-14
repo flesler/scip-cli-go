@@ -44,17 +44,25 @@ func (c *Check) LabeledTitle() string {
 	return fmt.Sprintf("[%s] %s", c.Priority, c.Title)
 }
 
+const rgStemRecipe = "Verify each row: rg -F STEM  (STEM = basename of the (...) path, no extension; ignore hits in that same file)"
+
 var falsePositivePrefaces = map[string]string{
-	"dead_exports":         "SCIP may miss dynamic loading (loadFiles, GraphQL), default-export object members, and some export const arrows — verify with rdeps/rg before deleting.",
-	"dead_files":           "Empty rdeps in the index. SCIP often records export const / arrow files as module-only, so named imports (routes, barrels) may not count; same for dynamic require. Confirm with rg.",
-	"unreferenced":         "No mentions in the index — may still run via dynamic import, side-effect registration, or a call SCIP did not record.",
-	"same_file_only":       "Referenced only in the defining file — often handlers or private helpers, or an external call SCIP missed; not necessarily a dead export.",
-	"stale_types":          "No cross-file refs in the index — may still be used in-file, as a type-only import SCIP dropped, or as a structural shape.",
-	"cycles":               "Remaining cycles may be barrel re-exports; confirm before refactoring.",
-	"dead_in_file":         "SCIP may miss dynamic loading, default-export indirection, and some export const arrows — verify with rdeps/rg before deleting.",
-	"unreferenced_in_file": "No mentions in the index — may still be used in-file via handlers or dynamic registration.",
-	"unused_imports":       "Import may still be a type-only use or a name SCIP did not bind — confirm before removing.",
-	"test_only":            "Index may miss same-file production calls, so this can look test-only when it is not.",
+	"dead_exports":         "Warn: SCIP misses require()/default exports; empty rdeps is not unused. " + rgStemRecipe,
+	"dead_files":           "Warn: SCIP often has no import edge (named import, barrel, require). " + rgStemRecipe,
+	"unreferenced":         "Warn: no index mentions — may still be called dynamically. " + rgStemRecipe,
+	"same_file_only":       "Warn: in-file only in SCIP — callers may be unindexed. " + rgStemRecipe,
+	"stale_types":          "Warn: type-only imports are often dropped by SCIP. " + rgStemRecipe,
+	"cycles":               "Warn: remaining cycles may be barrel re-exports. Confirm the listed files before refactoring.",
+	"dead_in_file":         "Warn: SCIP may miss dynamic loading and export const arrows. " + rgStemRecipe,
+	"unreferenced_in_file": "Warn: no index mentions — may still be registered dynamically. " + rgStemRecipe,
+	"unused_imports":       "Warn: may still be a type-only use SCIP did not bind. " + rgStemRecipe,
+	"test_only":            "Warn: index may miss production calls, so this can look test-only. " + rgStemRecipe,
+}
+
+const TruncationLine = "… truncated (raise --limit or --per-check-limit)"
+
+var redundantIfCovered = map[string]map[string]bool{
+	"unreferenced": {"dead_exports": true, "dead_in_file": true},
 }
 
 var checkKeys = map[string]bool{
@@ -78,7 +86,17 @@ func (b *RowBudget) Exhausted() bool {
 	return b.Remaining <= 0
 }
 
-func RunChecks(checks []Check, db *sql.DB, limit int, priorities map[Priority]bool, opts CheckOptions, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
+func CheckRowCap(remaining int, perCheckLimit int) int {
+	if perCheckLimit <= 0 {
+		return remaining
+	}
+	if perCheckLimit < remaining {
+		return perCheckLimit
+	}
+	return remaining
+}
+
+func RunChecks(checks []Check, db *sql.DB, limit int, priorities map[Priority]bool, opts CheckOptions, budget *RowBudget, selectedChecks map[string]bool, perCheckLimit int) ([]SectionResult, error) {
 	if budget == nil {
 		budget = &RowBudget{Remaining: limit}
 	}
@@ -103,23 +121,63 @@ func RunChecks(checks []Check, db *sql.DB, limit int, priorities map[Priority]bo
 		return selected[i].Key < selected[j].Key
 	})
 
+	selectedKeys := make(map[string]bool, len(selected))
+	for _, c := range selected {
+		selectedKeys[c.Key] = true
+	}
+	skip := make(map[string]bool)
+	for redundant, covers := range redundantIfCovered {
+		if !selectedKeys[redundant] {
+			continue
+		}
+		for cover := range covers {
+			if selectedKeys[cover] {
+				skip[redundant] = true
+				break
+			}
+		}
+	}
+	if len(skip) > 0 {
+		filtered := make([]Check, 0, len(selected))
+		for _, c := range selected {
+			if !skip[c.Key] {
+				filtered = append(filtered, c)
+			}
+		}
+		selected = filtered
+	}
+
+	resetLive, err := BindLive(db)
+	if err != nil {
+		return nil, err
+	}
+	defer resetLive()
+
 	var sections []SectionResult
-	for _, check := range selected {
+	var remainingAfter []Check
+	for index, check := range selected {
 		if budget.Exhausted() {
+			remainingAfter = selected[index:]
 			break
 		}
 
-		lines, err := check.Run(db, budget.Remaining, opts)
+		rowCap := CheckRowCap(budget.Remaining, perCheckLimit)
+		raw, err := check.Run(db, rowCap+1, opts)
 		if err != nil {
 			return nil, err
 		}
 
+		lines := raw
 		isNone := len(lines) == 1 && lines[0] == "(none)"
-		if !isNone {
-			if len(lines) > budget.Remaining {
-				lines = lines[:budget.Remaining]
+		if !isNone && len(raw) > 0 {
+			truncated := len(raw) > rowCap
+			if truncated {
+				lines = raw[:rowCap]
 			}
 			budget.Remaining -= len(lines)
+			if truncated {
+				lines = append(lines, TruncationLine)
+			}
 		}
 
 		preface := check.FalsePositivePreface
@@ -133,6 +191,15 @@ func RunChecks(checks []Check, db *sql.DB, limit int, priorities map[Priority]bo
 			Lines:   finalLines,
 			Preface: finalPreface,
 		})
+	}
+
+	if len(remainingAfter) > 0 && budget.Exhausted() {
+		title, lines, preface := FormatSection(
+			"[note] Output truncated",
+			[]string{"global --limit reached; later checks skipped (raise --limit)"},
+			"",
+		)
+		sections = append(sections, SectionResult{Title: title, Lines: lines, Preface: preface})
 	}
 
 	return sections, nil
@@ -383,7 +450,7 @@ func staleTypes(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		ORDER BY consumers ASC, def_d.relative_path
 	`, SymDefJoin, scopeClause)
 
-	live, err := BuildLiveIndex(db)
+	live, err := LiveFor(db)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +485,7 @@ func unreferencedSymbols(db *sql.DB, limit int, opts CheckOptions) ([]string, er
 		return nil, err
 	}
 
-	live, err := BuildLiveIndex(db)
+	live, err := LiveFor(db)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +498,7 @@ func sameFileOnly(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		return nil, err
 	}
 
-	live, err := BuildLiveIndex(db)
+	live, err := LiveFor(db)
 	if err != nil {
 		return nil, err
 	}
@@ -575,7 +642,7 @@ func deadExports(db *sql.DB, limit int, opts CheckOptions) ([]string, error) {
 		return nil, err
 	}
 
-	live, err := BuildLiveIndex(db)
+	live, err := LiveFor(db)
 	if err != nil {
 		return nil, err
 	}
@@ -674,7 +741,7 @@ func NewRowBudget(limit int) *RowBudget {
 	return &RowBudget{Remaining: limit}
 }
 
-func RunProjectSections(db *sql.DB, limit int, includeTests bool, scope string, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
+func RunProjectSections(db *sql.DB, limit int, includeTests bool, scope string, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool, perCheckLimit int) ([]SectionResult, error) {
 	scopeSuffix := ""
 	if scope != "" {
 		scopeSuffix = fmt.Sprintf(" [%s]", scope)
@@ -694,13 +761,13 @@ func RunProjectSections(db *sql.DB, limit int, includeTests bool, scope string, 
 	}
 
 	opts := CheckOptions{IncludeTests: includeTests, Scope: scope}
-	return RunChecks(checks, db, limit, priorities, opts, budget, selectedChecks)
+	return RunChecks(checks, db, limit, priorities, opts, budget, selectedChecks, perCheckLimit)
 }
 
 const MaxDirFiles = 30
 
-func RunDirSections(db *sql.DB, scope string, limit int, includeTests bool, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool) ([]SectionResult, error) {
-	secs, err := RunProjectSections(db, limit, includeTests, scope, priorities, budget, selectedChecks)
+func RunDirSections(db *sql.DB, scope string, limit int, includeTests bool, priorities map[Priority]bool, budget *RowBudget, selectedChecks map[string]bool, perCheckLimit int) ([]SectionResult, error) {
+	secs, err := RunProjectSections(db, limit, includeTests, scope, priorities, budget, selectedChecks, perCheckLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +792,7 @@ func RunDirSections(db *sql.DB, scope string, limit int, includeTests bool, prio
 		if budget.Exhausted() {
 			break
 		}
-		fileSecs, err := RunFileSectionsOnly(db, path, limit, priorities, budget, selectedChecks)
+		fileSecs, err := RunFileSectionsOnly(db, path, limit, priorities, budget, selectedChecks, perCheckLimit)
 		if err != nil {
 			return nil, err
 		}

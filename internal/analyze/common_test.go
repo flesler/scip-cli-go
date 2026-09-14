@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/flesler/scip-cli-go/v2/internal/analyze/testdb"
@@ -73,19 +74,22 @@ func TestRowBudgetViaRunChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	budget := NewRowBudget(3)
-	secs, err := RunProjectSections(db, 50, false, "", nil, budget, nil)
+	secs, err := RunProjectSections(db, 50, false, "", nil, budget, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	total := 0
+	dataRows := 0
 	for _, s := range secs {
+		if strings.HasPrefix(s.Title, "[note]") {
+			continue
+		}
 		for _, line := range s.Lines {
-			if line != "(none)" {
-				total++
+			if line != "(none)" && line != TruncationLine {
+				dataRows++
 			}
 		}
 	}
-	if total > 3 {
-		t.Fatalf("budget 3 but got %d rows across %d sections", total, len(secs))
+	if dataRows > 3 {
+		t.Fatalf("budget 3 but got %d rows across %d sections", dataRows, len(secs))
 	}
 }

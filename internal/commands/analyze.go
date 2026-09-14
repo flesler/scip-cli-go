@@ -36,8 +36,18 @@ func AnalyzeMain(args map[string]interface{}) error {
 	}
 	defer db.Close()
 
+	resetLive, err := analyze.BindLive(db)
+	if err != nil {
+		return err
+	}
+	defer resetLive()
+
 	pathScope := args["path_scope"].(string)
 	limit := args["limit"].(int)
+	perCheckLimit := 0
+	if v, ok := args["per_check_limit"]; ok && v != nil {
+		perCheckLimit = v.(int)
+	}
 	includeTests := args["include_tests"].(bool)
 	priorityStr := args["priority"].(string)
 	checkArgs := args["check"].([]string)
@@ -60,7 +70,7 @@ func AnalyzeMain(args map[string]interface{}) error {
 			fmt.Fprintf(os.Stderr, "Error: use analyze %q for directory scope (not analyze --path)\n", pathScope)
 			return clierr.Exit(1)
 		}
-		secs, err = analyze.RunProjectSections(db, limit, includeTests, "", priorities, budget, selectedChecks)
+		secs, err = analyze.RunProjectSections(db, limit, includeTests, "", priorities, budget, selectedChecks, perCheckLimit)
 		if err != nil {
 			return err
 		}
@@ -72,18 +82,18 @@ func AnalyzeMain(args map[string]interface{}) error {
 
 		switch resolved.Kind {
 		case "dir":
-			secs, err = analyze.RunDirSections(db, resolved.Scope, limit, includeTests, priorities, budget, selectedChecks)
+			secs, err = analyze.RunDirSections(db, resolved.Scope, limit, includeTests, priorities, budget, selectedChecks, perCheckLimit)
 			if err != nil {
 				return err
 			}
 		case "file":
 			fileInclude := projectIncludeTests(includeTests, resolved.Scope)
-			secs, err = analyze.RunProjectSections(db, limit, fileInclude, resolved.Scope, priorities, budget, selectedChecks)
+			secs, err = analyze.RunProjectSections(db, limit, fileInclude, resolved.Scope, priorities, budget, selectedChecks, perCheckLimit)
 			if err != nil {
 				return err
 			}
 			if !budget.Exhausted() {
-				fileSecs, err := analyze.RunFileSections(db, resolved.Scope, limit, priorities, budget, selectedChecks)
+				fileSecs, err := analyze.RunFileSections(db, resolved.Scope, limit, priorities, budget, selectedChecks, perCheckLimit)
 				if err != nil {
 					return err
 				}
@@ -94,7 +104,7 @@ func AnalyzeMain(args map[string]interface{}) error {
 			if err != nil {
 				return err
 			}
-			secs, err = analyze.RunSymbolSections(db, sym.ID, limit, priorities, budget, selectedChecks)
+			secs, err = analyze.RunSymbolSections(db, sym.ID, limit, priorities, budget, selectedChecks, perCheckLimit)
 			if err != nil {
 				return err
 			}

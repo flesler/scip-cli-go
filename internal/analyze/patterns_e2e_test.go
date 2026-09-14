@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 	}
 	cacheDir := filepath.Join(tmp, "cache")
 	os.Setenv("SCIP_CLI_CACHE", cacheDir)
-	if err := indexing.Reindex(patternFixtureRoot, true); err == nil {
+	if err := indexing.Reindex(patternFixtureRoot, nil); err == nil {
 		patternDBPath = cache.FindDB(patternFixtureRoot)
 		patternIndexOK = patternDBPath != ""
 	}

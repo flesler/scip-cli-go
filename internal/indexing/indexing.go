@@ -20,6 +20,7 @@ import (
 	"github.com/flesler/scip-cli-go/v2/internal/discover"
 	"github.com/flesler/scip-cli-go/v2/internal/exclude"
 	"github.com/flesler/scip-cli-go/v2/internal/merge"
+	"github.com/flesler/scip-cli-go/v2/internal/metadata"
 	"github.com/flesler/scip-cli-go/v2/internal/project"
 	"github.com/flesler/scip-cli-go/v2/internal/scip"
 	"github.com/flesler/scip-cli-go/v2/internal/scope"
@@ -1296,8 +1297,15 @@ func EnsureIndex(projectRoot string) error {
 	return err
 }
 
+// ReindexOptions carries optional metadata updates applied under the index build lock.
+type ReindexOptions struct {
+	Fresh         bool
+	ScopeUpdate   *metadata.OptionalSlice
+	ExcludeUpdate *metadata.OptionalSlice
+}
+
 // Reindex rebuilds the index from scratch.
-func Reindex(projectRoot string, force bool) error {
+func Reindex(projectRoot string, opts *ReindexOptions) error {
 	if projectRoot == "" {
 		projectRoot, _ = os.Getwd()
 	}
@@ -1320,6 +1328,12 @@ func Reindex(projectRoot string, force bool) error {
 		return err
 	}
 	defer cache.UnlockIndex(lock)
+
+	if opts != nil {
+		if _, err := metadata.ApplyMetadataUpdates(root, opts.Fresh, opts.ScopeUpdate, opts.ExcludeUpdate); err != nil {
+			return err
+		}
+	}
 
 	cache.CleanupInProgressIndex(cacheDir)
 	outputDB, skipped, total, err := indexProject(root, string(lang), cacheDir, true, false)

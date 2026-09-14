@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/flesler/scip-cli-go/v2/internal/exclude"
+	"github.com/flesler/scip-cli-go/v2/internal/indexing"
+	"github.com/flesler/scip-cli-go/v2/internal/metadata"
 	"github.com/flesler/scip-cli-go/v2/internal/scope"
 )
 
@@ -94,7 +96,13 @@ func withReindexRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	origReindex := reindexProject
-	reindexProject = func(string, bool) error { return nil }
+	reindexProject = func(root string, opts *indexing.ReindexOptions) error {
+		if opts == nil {
+			return nil
+		}
+		_, err := metadata.ApplyMetadataUpdates(root, opts.Fresh, opts.ScopeUpdate, opts.ExcludeUpdate)
+		return err
+	}
 	t.Cleanup(func() {
 		reindexProject = origReindex
 	})

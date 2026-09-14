@@ -68,7 +68,7 @@ func TestMain(m *testing.M) {
 	cacheBase = filepath.Join(tmp, "cache")
 	os.Setenv("SCIP_CLI_CACHE", cacheBase)
 
-	indexErr = indexing.Reindex(fixtureRoot, true)
+	indexErr = indexing.Reindex(fixtureRoot, nil)
 	indexOK = indexErr == nil
 
 	os.Exit(m.Run())

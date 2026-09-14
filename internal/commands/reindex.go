@@ -69,16 +69,17 @@ func ReindexMain(args map[string]interface{}) error {
 		}
 	}
 
-	if _, err := metadata.ApplyMetadataUpdates(root, fresh, scopeUpdate, excludeUpdate); err != nil {
-		return err
-	}
-
 	if withExternal {
 		os.Setenv("SCIP_CLI_KEEP_EXTERNAL", "1")
 		defer os.Unsetenv("SCIP_CLI_KEEP_EXTERNAL")
 	}
 
-	if err := reindexProject(root, true); err != nil {
+	opts := &indexing.ReindexOptions{
+		Fresh:         fresh,
+		ScopeUpdate:   scopeUpdate,
+		ExcludeUpdate: excludeUpdate,
+	}
+	if err := reindexProject(root, opts); err != nil {
 		return err
 	}
 

@@ -286,13 +286,13 @@ func runAnalyze(argv []string) error {
 		target = fs.Args()[0]
 	}
 	return commands.AnalyzeMain(map[string]interface{}{
-		"target":           target,
-		"limit":            *limit,
-		"per_check_limit":  *perCheckLimit,
-		"path_scope":       pathScope(*pathFlag),
-		"include_tests":    *includeTests,
-		"priority":         *priority,
-		"check":            checkArgs,
+		"target":          target,
+		"limit":           *limit,
+		"per_check_limit": *perCheckLimit,
+		"path_scope":      pathScope(*pathFlag),
+		"include_tests":   *includeTests,
+		"priority":        *priority,
+		"check":           checkArgs,
 	})
 }
 
